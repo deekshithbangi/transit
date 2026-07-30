@@ -1,5 +1,6 @@
 package com.deekshith.tgrtc.service.impl;
 
+import com.deekshith.tgrtc.dto.response.DepartureResponse;
 import com.deekshith.tgrtc.dto.response.StopTimeResponse;
 import com.deekshith.tgrtc.entity.StopTime;
 import com.deekshith.tgrtc.entity.StopTimeId;
@@ -75,5 +76,16 @@ public class StopTimeServiceImpl implements StopTimeService {
                 .stream()
                 .map(stopTimeMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    public List<DepartureResponse> getDeparturesByStopId(String stopId) {
+
+        if (!stopRepository.existsById(stopId)) {
+            throw new ResourceNotFoundException(
+                    "Stop not found with ID " + stopId);
+        }
+
+        return stopTimeRepository.findDeparturesByStopId(stopId);
     }
 }

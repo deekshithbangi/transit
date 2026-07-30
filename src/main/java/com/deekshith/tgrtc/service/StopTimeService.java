@@ -1,5 +1,6 @@
 package com.deekshith.tgrtc.service;
 
+import com.deekshith.tgrtc.dto.response.DepartureResponse;
 import com.deekshith.tgrtc.dto.response.StopTimeResponse;
 
 import java.util.List;
@@ -13,4 +14,6 @@ public interface StopTimeService {
     List<StopTimeResponse> getStopTimesByTripId(Long tripId);
 
     List<StopTimeResponse> getTripTimesByStopId(String stopId);
+
+    List<DepartureResponse> getDeparturesByStopId(String stopId);
 }
