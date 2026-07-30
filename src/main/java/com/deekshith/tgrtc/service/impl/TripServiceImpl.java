@@ -4,6 +4,7 @@ import com.deekshith.tgrtc.dto.response.TripResponse;
 import com.deekshith.tgrtc.entity.Trip;
 import com.deekshith.tgrtc.exception.ResourceNotFoundException;
 import com.deekshith.tgrtc.mapper.TripMapper;
+import com.deekshith.tgrtc.repository.RouteRepository;
 import com.deekshith.tgrtc.repository.TripRepository;
 import com.deekshith.tgrtc.service.TripService;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,8 @@ import java.util.List;
 public class TripServiceImpl implements TripService {
 
     private final TripRepository tripRepository;
+    private final RouteRepository routeRepository;
+//    private final TripMapper tripMapper;
 
     @Override
     public List<TripResponse> getAllTrips() {
@@ -33,5 +36,19 @@ public class TripServiceImpl implements TripService {
                         new ResourceNotFoundException("Trip not found with id: " + tripId));
 
         return TripMapper.toResponse(trip);
+    }
+
+    @Override
+    public List<TripResponse> getTripsByRouteId(String routeId) {
+
+        if (!routeRepository.existsById(routeId)) {
+            throw new ResourceNotFoundException(
+                    "Route not found with ID " + routeId);
+        }
+
+        return tripRepository.findTripsByRouteId(routeId)
+                .stream()
+                .map(TripMapper::toResponse)
+                .toList();
     }
 }

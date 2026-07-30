@@ -36,7 +36,7 @@ public class TripController {
                 .build();
     }
 
-    @GetMapping("/{tripId}/stop-times")
+    @GetMapping("/{tripId}/stops")
     public ApiResponse<List<StopTimeResponse>> getTripStopTimes(
             @PathVariable Long tripId) {
 
@@ -46,4 +46,5 @@ public class TripController {
                 .data(stopTimeService.getStopTimesByTripId(tripId))
                 .build();
     }
+
 }

@@ -34,4 +34,15 @@ public class ServiceCalendarController {
                 .data(serviceCalendarService.getServiceCalendarById(serviceId))
                 .build();
     }
+
+    @GetMapping("/route")
+    public ApiResponse<List<ServiceCalendarResponse>> getServicesByRouteId(
+            @RequestParam String routeId) {
+
+        return ApiResponse.<List<ServiceCalendarResponse>>builder()
+                .success(true)
+                .message("Services fetched successfully")
+                .data(serviceCalendarService.getServicesByRouteId(routeId))
+                .build();
+    }
 }

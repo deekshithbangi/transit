@@ -10,4 +10,5 @@ public interface ServiceCalendarService {
 
     ServiceCalendarResponse getServiceCalendarById(String serviceId);
 
+    List<ServiceCalendarResponse> getServicesByRouteId(String routeId);
 }

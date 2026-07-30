@@ -2,7 +2,9 @@ package com.deekshith.tgrtc.mapper;
 
 import com.deekshith.tgrtc.dto.response.TripResponse;
 import com.deekshith.tgrtc.entity.Trip;
+import org.springframework.stereotype.Component;
 
+@Component
 public final class TripMapper {
 
     private TripMapper() {

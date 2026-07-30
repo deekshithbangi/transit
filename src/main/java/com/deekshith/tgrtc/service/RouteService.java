@@ -9,4 +9,6 @@ public interface RouteService {
     List<RouteResponse> getAllRoutes();
 
     RouteResponse getRouteById(String routeId);
+
+    List<RouteResponse> getRoutesByStopId(String stopId);
 }
