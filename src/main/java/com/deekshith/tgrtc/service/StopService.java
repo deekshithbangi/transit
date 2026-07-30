@@ -1,5 +1,6 @@
 package com.deekshith.tgrtc.service;
 
+import com.deekshith.tgrtc.dto.response.NearbyStopResponse;
 import com.deekshith.tgrtc.dto.response.PageResponse;
 import com.deekshith.tgrtc.dto.response.StopResponse;
 import org.springframework.data.domain.Pageable;
@@ -18,4 +19,11 @@ public interface StopService {
     );
 
     List<StopResponse> getStopsByRouteId(String routeId);
+
+    List<NearbyStopResponse> getNearbyStops(
+            Double latitude,
+            Double longitude,
+            Double radius);
+
+
 }

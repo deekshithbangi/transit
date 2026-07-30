@@ -1,6 +1,7 @@
 package com.deekshith.tgrtc.controller;
 
 import com.deekshith.tgrtc.dto.response.ApiResponse;
+import com.deekshith.tgrtc.dto.response.NearbyStopResponse;
 import com.deekshith.tgrtc.dto.response.PageResponse;
 import com.deekshith.tgrtc.dto.response.StopResponse;
 import com.deekshith.tgrtc.service.StopService;
@@ -62,6 +63,24 @@ public class StopController {
                 .success(true)
                 .message("Stops fetched successfully")
                 .data(stopService.getStopsByRouteId(routeId))
+                .build();
+    }
+
+    @GetMapping("/nearby")
+    public ApiResponse<List<NearbyStopResponse>> getNearbyStops(
+
+            @RequestParam Double lat,
+
+            @RequestParam Double lon,
+
+            @RequestParam Double radius
+
+    ) {
+
+        return ApiResponse.<List<NearbyStopResponse>>builder()
+                .success(true)
+                .message("Nearby stops fetched successfully")
+                .data(stopService.getNearbyStops(lat, lon, radius))
                 .build();
     }
 }

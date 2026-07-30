@@ -1,5 +1,6 @@
 package com.deekshith.tgrtc.service.impl;
 
+import com.deekshith.tgrtc.dto.response.NearbyStopResponse;
 import com.deekshith.tgrtc.dto.response.PageResponse;
 import com.deekshith.tgrtc.dto.response.StopResponse;
 import com.deekshith.tgrtc.entity.Stop;
@@ -79,6 +80,24 @@ public class StopServiceImpl implements StopService {
 
         return stops.stream()
                 .map(StopMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    public List<NearbyStopResponse> getNearbyStops(
+            Double latitude,
+            Double longitude,
+            Double radius) {
+
+        return stopRepository.findNearbyStops(latitude, longitude, radius)
+                .stream()
+                .map(row -> NearbyStopResponse.builder()
+                        .stopId((String) row[0])
+                        .stopName((String) row[1])
+                        .stopLat(((Number) row[2]).doubleValue())
+                        .stopLon(((Number) row[3]).doubleValue())
+                        .distance(((Number) row[4]).doubleValue())
+                        .build())
                 .toList();
     }
 }
