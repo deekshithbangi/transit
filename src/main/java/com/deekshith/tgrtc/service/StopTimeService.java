@@ -10,4 +10,7 @@ public interface StopTimeService {
 
     StopTimeResponse getStopTime(Long tripId, Integer stopSequence);
 
+    List<StopTimeResponse> getStopTimesByTripId(Long tripId);
+
+    List<StopTimeResponse> getTripTimesByStopId(String stopId);
 }

@@ -9,5 +9,6 @@ import java.util.List;
 public interface StopTimeRepository extends JpaRepository<StopTime, StopTimeId> {
 
     List<StopTime> findByTripTripIdOrderByIdStopSequence(Long tripId);
+    List<StopTime> findByStopStopIdOrderByArrivalTime(String stopId);
 
 }

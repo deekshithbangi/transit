@@ -2,7 +2,9 @@ package com.deekshith.tgrtc.controller;
 
 import com.deekshith.tgrtc.dto.response.ApiResponse;
 import com.deekshith.tgrtc.dto.response.StopResponse;
+import com.deekshith.tgrtc.dto.response.StopTimeResponse;
 import com.deekshith.tgrtc.service.StopService;
+import com.deekshith.tgrtc.service.StopTimeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,6 +16,7 @@ import java.util.List;
 public class StopController {
 
     private final StopService stopService;
+    private final StopTimeService stopTimeService;
 
     @GetMapping
     public ApiResponse<List<StopResponse>> getAllStops() {
@@ -30,6 +33,17 @@ public class StopController {
                 .success(true)
                 .message("Stop fetched successfully")
                 .data(stopService.getStopById(stopId))
+                .build();
+    }
+
+    @GetMapping("/{stopId}/trip-times")
+    public ApiResponse<List<StopTimeResponse>> getTripTimesByStopId(
+            @PathVariable String stopId) {
+
+        return ApiResponse.<List<StopTimeResponse>>builder()
+                .success(true)
+                .message("Trip times fetched successfully")
+                .data(stopTimeService.getTripTimesByStopId(stopId))
                 .build();
     }
 }

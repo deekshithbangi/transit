@@ -29,11 +29,10 @@ public class GlobalExceptionHandler {
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
-                .message("An unexpected error occurred.")
+                .message(ex.getMessage())
                 .data(null)
                 .build();
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(response);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }

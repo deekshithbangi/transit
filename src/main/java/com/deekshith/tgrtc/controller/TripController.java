@@ -5,6 +5,8 @@ import com.deekshith.tgrtc.dto.response.TripResponse;
 import com.deekshith.tgrtc.service.TripService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import com.deekshith.tgrtc.service.StopTimeService;
+import com.deekshith.tgrtc.dto.response.StopTimeResponse;
 
 import java.util.List;
 
@@ -14,6 +16,7 @@ import java.util.List;
 public class TripController {
 
     private final TripService tripService;
+    private final StopTimeService stopTimeService;
 
     @GetMapping
     public ApiResponse<List<TripResponse>> getAllTrips() {
@@ -30,6 +33,17 @@ public class TripController {
                 .success(true)
                 .message("Trip fetched successfully")
                 .data(tripService.getTripById(tripId))
+                .build();
+    }
+
+    @GetMapping("/{tripId}/stop-times")
+    public ApiResponse<List<StopTimeResponse>> getTripStopTimes(
+            @PathVariable Long tripId) {
+
+        return ApiResponse.<List<StopTimeResponse>>builder()
+                .success(true)
+                .message("Trip stop times fetched successfully")
+                .data(stopTimeService.getStopTimesByTripId(tripId))
                 .build();
     }
 }
