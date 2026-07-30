@@ -36,4 +36,11 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
         """)
     List<ServiceCalendar> findServiceCalendarsByRouteId(
             @Param("routeId") String routeId);
+
+    @Query("""
+    SELECT COUNT(t)
+    FROM Trip t
+    WHERE t.route.routeId = :routeId
+""")
+    Long countTripsByRouteId(@Param("routeId") String routeId);
 }

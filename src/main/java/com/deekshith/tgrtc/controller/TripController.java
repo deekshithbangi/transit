@@ -2,6 +2,7 @@ package com.deekshith.tgrtc.controller;
 
 import com.deekshith.tgrtc.dto.response.ApiResponse;
 import com.deekshith.tgrtc.dto.response.TripResponse;
+import com.deekshith.tgrtc.dto.response.TripScheduleResponse;
 import com.deekshith.tgrtc.service.TripService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -44,6 +45,17 @@ public class TripController {
                 .success(true)
                 .message("Trip stop times fetched successfully")
                 .data(stopTimeService.getStopTimesByTripId(tripId))
+                .build();
+    }
+
+    @GetMapping("/{tripId}/schedule")
+    public ApiResponse<List<TripScheduleResponse>> getTripSchedule(
+            @PathVariable Long tripId) {
+
+        return ApiResponse.<List<TripScheduleResponse>>builder()
+                .success(true)
+                .message("Trip schedule fetched successfully")
+                .data(tripService.getTripSchedule(tripId))
                 .build();
     }
 

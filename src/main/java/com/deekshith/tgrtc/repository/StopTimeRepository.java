@@ -1,8 +1,11 @@
 package com.deekshith.tgrtc.repository;
 
+import com.deekshith.tgrtc.dto.response.RouteDetailsResponse;
+import com.deekshith.tgrtc.entity.Route;
 import com.deekshith.tgrtc.entity.Stop;
 import com.deekshith.tgrtc.entity.StopTime;
 import com.deekshith.tgrtc.entity.StopTimeId;
+import com.deekshith.tgrtc.exception.ResourceNotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,4 +23,11 @@ public interface StopTimeRepository extends JpaRepository<StopTime, StopTimeId> 
         WHERE st.trip.route.routeId = :routeId
         """)
     List<Stop> findStopsByRouteId(@Param("routeId") String routeId);
+
+    @Query("""
+    SELECT COUNT(DISTINCT st.stop.stopId)
+    FROM StopTime st
+    WHERE st.trip.route.routeId = :routeId
+""")
+    Long countStopsByRouteId(@Param("routeId") String routeId);
 }

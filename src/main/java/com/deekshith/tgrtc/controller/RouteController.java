@@ -1,6 +1,7 @@
 package com.deekshith.tgrtc.controller;
 
 import com.deekshith.tgrtc.dto.response.ApiResponse;
+import com.deekshith.tgrtc.dto.response.RouteDetailsResponse;
 import com.deekshith.tgrtc.dto.response.RouteResponse;
 import com.deekshith.tgrtc.dto.response.TripResponse;
 import com.deekshith.tgrtc.service.RouteService;
@@ -59,6 +60,17 @@ public class RouteController {
                 .success(true)
                 .message("Routes fetched successfully")
                 .data(routeService.getRoutesByStopId(stopId))
+                .build();
+    }
+
+    @GetMapping("/details")
+    public ApiResponse<RouteDetailsResponse> getRouteDetails(
+            @RequestParam String routeId) {
+
+        return ApiResponse.<RouteDetailsResponse>builder()
+                .success(true)
+                .message("Route details fetched successfully")
+                .data(routeService.getRouteDetails(routeId))
                 .build();
     }
 }
