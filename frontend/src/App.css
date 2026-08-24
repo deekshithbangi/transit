@@ -21,9 +21,9 @@
 .route-badge-label {
     display: block;
     max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
     font-size: 26px;
     line-height: 1.1;
     letter-spacing: -.6px
@@ -717,7 +717,7 @@ footer {
     }
 
     .journey-summary {
-        grid-template-columns: 65px 1fr 20px;
+        grid-template-columns: 72px 1fr 20px;
         gap: 7px;
         padding: 15px
     }
