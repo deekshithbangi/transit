@@ -1,6 +1,4 @@
-.journey-summary {
-    grid-template-columns: minmax(125px, 155px) minmax(0, 1fr) auto 20px
-}
+/* Desktop journey card column layout is set in the main .journey-summary block below */
 
 .journey-main {
     min-width: 0
@@ -21,9 +19,9 @@
 .route-badge-label {
     display: block;
     max-width: 100%;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 26px;
     line-height: 1.1;
     letter-spacing: -.6px
@@ -407,7 +405,7 @@ nav {
 
 .journey-summary {
     display: grid;
-    grid-template-columns: 92px 1fr auto 20px;
+    grid-template-columns: minmax(100px, 130px) minmax(0, 1fr) auto 20px;
     align-items: center;
     width: 100%;
     min-height: 94px;
@@ -722,18 +720,35 @@ footer {
         padding: 15px
     }
 
+    /* Route badge: allow long names like 24B/281 to wrap on mobile only */
+    .route-badge-label {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        font-size: 20px
+    }
+
     .arrival {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
         grid-column: 2;
         text-align: left
     }
 
     .arrival strong {
         display: inline;
-        font-size: 20px
+        font-size: 18px;
+        flex-shrink: 0
     }
 
     .arrival span {
-        margin-left: 8px
+        margin: 0;
+        font-size: 11px;
+        white-space: nowrap
     }
 
     .journey-direction {
