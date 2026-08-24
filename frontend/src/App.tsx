@@ -291,11 +291,12 @@ function RouteDetailView({ route, onBack, onPlanRoute }: {
 }) {
   const [details, setDetails] = useState<RouteDetails | null>(null)
   const [stops,   setStops]   = useState<ScheduleStop[]>([])
+  const [freqMin, setFreqMin] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [err,     setErr]     = useState<string | null>(null)
 
   useEffect(() => {
-    setLoading(true); setErr(null); setDetails(null); setStops([])
+    setLoading(true); setErr(null); setDetails(null); setStops([]); setFreqMin(null)
     async function load() {
       try {
         const [detPay, tripPay] = await Promise.all([
@@ -304,9 +305,21 @@ function RouteDetailView({ route, onBack, onPlanRoute }: {
         ])
         setDetails(detPay.data)
         const trips = tripPay.data ?? []
-        if (trips.length > 0) {
-          const schedPay = await fetchJson<{ data: ScheduleStop[] }>(`${API_URL}/trips/${trips[0].tripId}/schedule`)
-          setStops(compactStops(schedPay.data ?? []))
+        if (trips.length === 0) return
+        // Sample up to 5 trips in parallel: first for path, all for frequency
+        const sample = trips.slice(0, 5)
+        const scheds = await Promise.all(
+          sample.map(t => fetchJson<{ data: ScheduleStop[] }>(`${API_URL}/trips/${t.tripId}/schedule`))
+        )
+        setStops(compactStops(scheds[0]?.data ?? []))
+        // Real frequency: sort first-stop departure times, take median gap
+        const deps = scheds
+          .map(s => s?.data?.[0]?.departureTime)
+          .filter(Boolean) as string[]
+        if (deps.length >= 2) {
+          const mins = deps.map(t => { const [h,m] = t.split(':').map(Number); return h*60+m }).sort((a,b)=>a-b)
+          const gaps = mins.slice(1).map((m,i) => m - mins[i]).filter(g => g > 0 && g < 180)
+          if (gaps.length > 0) setFreqMin(gaps.sort((a,b)=>a-b)[Math.floor(gaps.length/2)])
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : 'Failed to load route details')
@@ -321,7 +334,8 @@ function RouteDetailView({ route, onBack, onPlanRoute }: {
     ? DAY_KEYS.map((d, i) => details.serviceCalendars.some(c => c[d] === 1) ? DAY_LABELS[i] : null).filter(Boolean)
     : []
 
-  const freqMin = details?.tripsCount ? Math.round(18 * 60 / details.tripsCount) : null
+  const firstStop = stops.length > 0 ? displayName(stops[0].stopName) : null
+  const lastStop  = stops.length > 0 ? displayName(stops[stops.length - 1].stopName) : null
 
   return (
     <section className="rds-view">
@@ -330,7 +344,9 @@ function RouteDetailView({ route, onBack, onPlanRoute }: {
       <div className="rds-header">
         <div className="rds-badge"><Icon name="bus" /><span>{route.routeShortName}</span></div>
         <div>
-          <p className="eyebrow">Route details</p>
+          <p className="eyebrow">
+            {firstStop && lastStop ? `${firstStop} → ${lastStop}` : 'Route details'}
+          </p>
           <h1 className="rds-title">Route {route.routeShortName}</h1>
         </div>
       </div>
@@ -345,7 +361,7 @@ function RouteDetailView({ route, onBack, onPlanRoute }: {
               <strong>{details.tripsCount}</strong><span>Trips per day</span>
             </div>
             <div className="rds-stat">
-              <strong>{details.stopsCount}</strong><span>Total stops</span>
+              <strong>{stops.length || details.stopsCount}</strong><span>Route stops</span>
             </div>
             {freqMin && (
               <div className="rds-stat">
@@ -411,6 +427,35 @@ function App() {
   const cacheRef     = useRef<Map<string, Stop[]>>(new Map())
   const reqIdRef     = useRef(0)
   const activeText   = editing === 'from' ? fromText : toText
+
+  // History-aware navigation — keeps browser back/forward working
+  const navigate = useCallback((nextView: 'planner' | 'routes' | 'routeDetail', route?: Route) => {
+    if (nextView === 'routeDetail' && route) {
+      window.history.pushState({ view: 'routeDetail', routeId: route.routeId, routeShortName: route.routeShortName }, '', `#route/${encodeURIComponent(route.routeId)}`)
+      setSelectedRoute(route)
+    } else if (nextView === 'routes') {
+      window.history.pushState({ view: 'routes' }, '', '#routes')
+    } else {
+      window.history.pushState({ view: 'planner' }, '', '#')
+    }
+    setView(nextView)
+    setMenuOpen(false)
+  }, [])
+
+  useEffect(() => {
+    window.history.replaceState({ view: 'planner' }, '', '#')
+    const onPop = (e: PopStateEvent) => {
+      const s = e.state as { view?: string; routeId?: string; routeShortName?: string } | null
+      setMenuOpen(false)
+      if (s?.view === 'routes') setView('routes')
+      else if (s?.view === 'routeDetail' && s.routeId) {
+        setSelectedRoute({ routeId: s.routeId, routeShortName: s.routeShortName ?? s.routeId })
+        setView('routeDetail')
+      } else setView('planner')
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
 
   // Suggestion fetch with debounce + cache
   useEffect(() => {
@@ -627,12 +672,12 @@ function App() {
     <main className="app-shell">
       {/* ── Top bar ── */}
       <header className="topbar">
-        <a className="brand" href="#top" onClick={() => { setView('planner'); setMenuOpen(false) }}>
+        <a className="brand" href="#" onClick={e => { e.preventDefault(); navigate('planner') }}>
           <span className="brand-mark"><Icon name="bus" /></span>Transit
         </a>
         <nav aria-label="Main navigation">
-          <button className={`nav-link ${view === 'planner' ? 'active' : ''}`} onClick={() => setView('planner')}>Plan a trip</button>
-          <button className={`nav-link ${view === 'routes'  ? 'active' : ''}`} onClick={() => setView('routes')}>Routes</button>
+          <button className={`nav-link ${view === 'planner' ? 'active' : ''}`} onClick={() => navigate('planner')}>Plan a trip</button>
+          <button className={`nav-link ${view === 'routes'  ? 'active' : ''}`} onClick={() => navigate('routes')}>Routes</button>
         </nav>
         <button className={`menu-button ${menuOpen ? 'open' : ''}`} aria-label="Open menu" onClick={() => setMenuOpen(o => !o)}>
           <span /><span /><span />
@@ -641,9 +686,9 @@ function App() {
       {menuOpen && (
         <div className="mobile-nav" role="menu">
           <button className={`mobile-nav-link ${view === 'planner' ? 'active' : ''}`}
-            onClick={() => { setView('planner'); setMenuOpen(false) }}>Plan a trip</button>
+            onClick={() => navigate('planner')}>Plan a trip</button>
           <button className={`mobile-nav-link ${view === 'routes' ? 'active' : ''}`}
-            onClick={() => { setView('routes'); setMenuOpen(false) }}>Routes</button>
+            onClick={() => navigate('routes')}>Routes</button>
         </div>
       )}
 
@@ -785,16 +830,16 @@ function App() {
       ) : view === 'routeDetail' && selectedRoute ? (
         <RouteDetailView
           route={selectedRoute}
-          onBack={() => setView('routes')}
+          onBack={() => navigate('routes')}
           onPlanRoute={route => {
-            setView('planner')
+            navigate('planner')
             setLocationMessage(`Route ${route.routeShortName} selected — choose your stops to plan a trip`)
           }}
         />
       ) : (
         <RoutesView
           routes={routeCards}
-          onSelectRoute={route => { setSelectedRoute(route); setView('routeDetail') }}
+          onSelectRoute={route => navigate('routeDetail', route)}
         />
       )}
 
