@@ -221,7 +221,11 @@ function JourneyCard({ journey, expanded, schedule, onClick }: {
       <button className="journey-summary" onClick={onClick} aria-expanded={expanded}>
         <div className="route-badge">
           <Icon name="bus" />
-          <span className="route-badge-label">{journey.routeShortName}</span>
+          <span className="route-badge-label">
+            {journey.routeShortName.split('/').flatMap((part, i) =>
+              i === 0 ? [part] : ['/', <wbr key={i} />, part]
+            )}
+          </span>
         </div>
         <div className="journey-main">
           <p className="journey-direction">

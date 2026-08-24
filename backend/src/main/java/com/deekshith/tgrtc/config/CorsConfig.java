@@ -10,7 +10,7 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins("https://transit-inky.vercel.app")
+                .allowedOrigins("https://transit-inky.vercel.app", "http://localhost:5173")
                 .allowedMethods(
                         "GET",
                         "POST",
