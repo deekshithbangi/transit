@@ -280,6 +280,7 @@ function RoutesView({ routes, onPlanRoute }: { routes: Route[]; onPlanRoute: (r:
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [view,             setView]            = useState<'planner' | 'routes'>('planner')
+  const [menuOpen,         setMenuOpen]        = useState(false)
   const [from,             setFrom]            = useState<Stop | null>(null)
   const [to,               setTo]              = useState<Stop | null>(null)
   const [fromText,         setFromText]        = useState('')
@@ -516,15 +517,25 @@ function App() {
     <main className="app-shell">
       {/* ── Top bar ── */}
       <header className="topbar">
-        <a className="brand" href="#top" onClick={() => setView('planner')}>
+        <a className="brand" href="#top" onClick={() => { setView('planner'); setMenuOpen(false) }}>
           <span className="brand-mark"><Icon name="bus" /></span>Transit
         </a>
         <nav aria-label="Main navigation">
           <button className={`nav-link ${view === 'planner' ? 'active' : ''}`} onClick={() => setView('planner')}>Plan a trip</button>
           <button className={`nav-link ${view === 'routes'  ? 'active' : ''}`} onClick={() => setView('routes')}>Routes</button>
         </nav>
-        <button className="menu-button" aria-label="Open menu"><span /><span /></button>
+        <button className={`menu-button ${menuOpen ? 'open' : ''}`} aria-label="Open menu" onClick={() => setMenuOpen(o => !o)}>
+          <span /><span /><span />
+        </button>
       </header>
+      {menuOpen && (
+        <div className="mobile-nav" role="menu">
+          <button className={`mobile-nav-link ${view === 'planner' ? 'active' : ''}`}
+            onClick={() => { setView('planner'); setMenuOpen(false) }}>Plan a trip</button>
+          <button className={`mobile-nav-link ${view === 'routes' ? 'active' : ''}`}
+            onClick={() => { setView('routes'); setMenuOpen(false) }}>Routes</button>
+        </div>
+      )}
 
       {view === 'planner' ? (
         <>

@@ -108,8 +108,20 @@ nav {
     display: block;
     width: 21px;
     height: 2px;
-    margin: 5px;
-    background: var(--ink)
+    margin: 4px 0;
+    background: var(--ink);
+    border-radius: 2px;
+    transition: transform .2s, opacity .2s
+}
+
+/* X animation when open */
+.menu-button.open span:nth-child(1) { transform: translateY(6px) rotate(45deg) }
+.menu-button.open span:nth-child(2) { opacity: 0 }
+.menu-button.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg) }
+
+/* Mobile nav dropdown – hidden on desktop */
+.mobile-nav {
+    display: none
 }
 
 .hero {
@@ -660,6 +672,34 @@ footer {
 
     .menu-button {
         display: block
+    }
+
+    .mobile-nav {
+        display: flex;
+        flex-direction: column;
+        background: white;
+        border-bottom: 1px solid var(--line);
+        box-shadow: 0 6px 18px rgba(19, 39, 29, .09)
+    }
+
+    .mobile-nav-link {
+        padding: 16px 20px;
+        border: 0;
+        border-top: 1px solid var(--line);
+        background: transparent;
+        text-align: left;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--ink);
+        cursor: pointer
+    }
+
+    .mobile-nav-link:hover {
+        background: #f3f7ed
+    }
+
+    .mobile-nav-link.active {
+        color: var(--green)
     }
 
     .hero {
