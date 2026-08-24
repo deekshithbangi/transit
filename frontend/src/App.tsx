@@ -12,8 +12,11 @@ type Journey      = {
   toStopId: string;   toStopName: string
   departureTime: string; arrivalTime: string; minutesUntilDeparture: number
 }
-type Alternative = { from: Stop; to: Stop; nextBus: Journey }
-type Editing = 'from' | 'to' | null
+type Alternative  = { from: Stop; to: Stop; nextBus: Journey }
+type Editing      = 'from' | 'to' | null
+type TripInfo     = { tripId: number; routeId: string; tripHeadsign?: string }
+type ServiceCal   = { serviceId: string; monday: number; tuesday: number; wednesday: number; thursday: number; friday: number; saturday: number; sunday: number }
+type RouteDetails = { routeId: string; routeShortName: string; tripsCount: number; stopsCount: number; serviceCalendars: ServiceCal[] }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const API_URL          = import.meta.env.VITE_API_URL ?? '/api'
@@ -259,17 +262,17 @@ function JourneyCard({ journey, expanded, schedule, onClick }: {
   )
 }
 
-function RoutesView({ routes, onPlanRoute }: { routes: Route[]; onPlanRoute: (r: Route) => void }) {
+function RoutesView({ routes, onSelectRoute }: { routes: Route[]; onSelectRoute: (r: Route) => void }) {
   return (
     <section className="routes-view">
       <p className="eyebrow">All services</p>
       <h1>Find your bus route.</h1>
-      <p className="routes-copy">Browse the available TGSRTC routes, then plan a journey between the stops you need.</p>
+      <p className="routes-copy">Browse the available TGSRTC routes and tap a card to see stops and frequency.</p>
       <div className="route-grid">
         {routes.map(route => (
-          <button className="route-card" key={route.routeId} onClick={() => onPlanRoute(route)}>
+          <button className="route-card" key={route.routeId} onClick={() => onSelectRoute(route)}>
             <span className="route-number"><Icon name="bus" />{route.routeShortName}</span>
-            <span>Plan a trip on this route <Icon name="arrow" /></span>
+            <span>View route details <Icon name="arrow" /></span>
           </button>
         ))}
       </div>
@@ -277,10 +280,117 @@ function RoutesView({ routes, onPlanRoute }: { routes: Route[]; onPlanRoute: (r:
   )
 }
 
+// ─── Route Detail View ────────────────────────────────────────────────────────
+const DAY_KEYS   = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const
+const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
+function RouteDetailView({ route, onBack, onPlanRoute }: {
+  route: Route
+  onBack: () => void
+  onPlanRoute: (r: Route) => void
+}) {
+  const [details, setDetails] = useState<RouteDetails | null>(null)
+  const [stops,   setStops]   = useState<ScheduleStop[]>([])
+  const [loading, setLoading] = useState(true)
+  const [err,     setErr]     = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true); setErr(null); setDetails(null); setStops([])
+    async function load() {
+      try {
+        const [detPay, tripPay] = await Promise.all([
+          fetchJson<{ data: RouteDetails }>(`${API_URL}/routes/details?routeId=${encodeURIComponent(route.routeId)}`),
+          fetchJson<{ data: TripInfo[] }>(`${API_URL}/routes/trips?routeId=${encodeURIComponent(route.routeId)}`),
+        ])
+        setDetails(detPay.data)
+        const trips = tripPay.data ?? []
+        if (trips.length > 0) {
+          const schedPay = await fetchJson<{ data: ScheduleStop[] }>(`${API_URL}/trips/${trips[0].tripId}/schedule`)
+          setStops(compactStops(schedPay.data ?? []))
+        }
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Failed to load route details')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [route.routeId])
+
+  const activeDayLabels = details
+    ? DAY_KEYS.map((d, i) => details.serviceCalendars.some(c => c[d] === 1) ? DAY_LABELS[i] : null).filter(Boolean)
+    : []
+
+  const freqMin = details?.tripsCount ? Math.round(18 * 60 / details.tripsCount) : null
+
+  return (
+    <section className="rds-view">
+      <button className="rds-back" onClick={onBack}><Icon name="back" />All routes</button>
+
+      <div className="rds-header">
+        <div className="rds-badge"><Icon name="bus" /><span>{route.routeShortName}</span></div>
+        <div>
+          <p className="eyebrow">Route details</p>
+          <h1 className="rds-title">Route {route.routeShortName}</h1>
+        </div>
+      </div>
+
+      {loading && <p className="rds-loading">Loading route details…</p>}
+      {err     && <p className="rds-error">{err}</p>}
+
+      {details && !loading && (
+        <>
+          <div className="rds-stats">
+            <div className="rds-stat">
+              <strong>{details.tripsCount}</strong><span>Trips per day</span>
+            </div>
+            <div className="rds-stat">
+              <strong>{details.stopsCount}</strong><span>Total stops</span>
+            </div>
+            {freqMin && (
+              <div className="rds-stat">
+                <strong>~{freqMin} min</strong><span>Avg frequency</span>
+              </div>
+            )}
+          </div>
+
+          {activeDayLabels.length > 0 && (
+            <div className="rds-days">
+              <Icon name="clock" />
+              Operates: {activeDayLabels.join(' · ')}
+            </div>
+          )}
+
+          <button className="rds-plan-btn" onClick={() => onPlanRoute(route)}>
+            <Icon name="search" />Plan a trip on this route
+          </button>
+
+          {stops.length > 0 && (
+            <div className="rds-stops">
+              <p className="rds-stops-title">Route path · {stops.length} stops</p>
+              <ol>
+                {stops.map((stop, i) => (
+                  <li key={`${stop.stopId}-${i}`}
+                    className={i === 0 ? 'first-stop' : i === stops.length - 1 ? 'last-stop' : ''}>
+                    <span className="timeline-dot" />
+                    <span>{displayName(stop.stopName)}</span>
+                    <time>{stop.departureTime.slice(0, 5)}</time>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [view,             setView]            = useState<'planner' | 'routes'>('planner')
+  const [view,             setView]            = useState<'planner' | 'routes' | 'routeDetail'>('planner')
   const [menuOpen,         setMenuOpen]        = useState(false)
+  const [selectedRoute,    setSelectedRoute]   = useState<Route | null>(null)
   const [from,             setFrom]            = useState<Stop | null>(null)
   const [to,               setTo]              = useState<Stop | null>(null)
   const [fromText,         setFromText]        = useState('')
@@ -672,13 +782,19 @@ function App() {
             ) : null}
           </section>
         </>
-      ) : (
-        <RoutesView
-          routes={routeCards}
+      ) : view === 'routeDetail' && selectedRoute ? (
+        <RouteDetailView
+          route={selectedRoute}
+          onBack={() => setView('routes')}
           onPlanRoute={route => {
             setView('planner')
             setLocationMessage(`Route ${route.routeShortName} selected — choose your stops to plan a trip`)
           }}
+        />
+      ) : (
+        <RoutesView
+          routes={routeCards}
+          onSelectRoute={route => { setSelectedRoute(route); setView('routeDetail') }}
         />
       )}
 
