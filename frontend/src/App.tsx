@@ -12,21 +12,15 @@ type Journey      = {
   toStopId: string;   toStopName: string
   departureTime: string; arrivalTime: string; minutesUntilDeparture: number
 }
-type Alternative  = { from: Stop; to: Stop; nextBus: Journey }
 type Editing      = 'from' | 'to' | null
 type TripInfo     = { tripId: number; routeId: string; tripHeadsign?: string }
 type ServiceCal   = { serviceId: string; monday: number; tuesday: number; wednesday: number; thursday: number; friday: number; saturday: number; sunday: number }
 type RouteDetails = { routeId: string; routeShortName: string; tripsCount: number; stopsCount: number; serviceCalendars: ServiceCal[] }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const API_URL          = import.meta.env.VITE_API_URL ?? '/api'
-const STOP_SEARCH_LIMIT = 5
+const API_URL           = import.meta.env.VITE_API_URL ?? '/api'
+const STOP_SEARCH_LIMIT = 30   // Fetch enough stops so name-dedup yields many unique suggestions
 const MAX_MINUTES       = 18 * 60   // 18-hour display window
-const DEMO_ROUTES: Route[] = [
-  { routeId: '100B', routeShortName: '100B' },
-  { routeId: '100G', routeShortName: '100G' },
-  { routeId: '10',   routeShortName: '10'   },
-]
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 async function fetchJson<T>(url: string): Promise<T> {
@@ -41,15 +35,6 @@ async function searchStopsByName(name: string, size = STOP_SEARCH_LIMIT): Promis
     `${API_URL}/stops/search?name=${encodeURIComponent(name)}&size=${size}`,
   )
   return (payload.data?.content ?? []).map(({ stopId, stopName, stopLat, stopLon }: Stop) => ({ stopId, stopName, stopLat, stopLon }))
-}
-
-async function fetchNearbyStops(lat: number, lon: number, radius = 2500): Promise<Stop[]> {
-  try {
-    const payload = await fetchJson<{ data?: Stop[] }>(
-      `${API_URL}/stops/nearby?lat=${lat}&lon=${lon}&radius=${radius}`,
-    )
-    return payload.data ?? []
-  } catch { return [] }
 }
 
 async function fetchJourneysForStops(from: Stop, to: Stop, limit = 10): Promise<Journey[]> {
@@ -109,11 +94,13 @@ function buildQueryVariants(query: string): string[] {
   return [...set]
 }
 
-async function findCandidates(text: string, current: Stop | null, max = 5): Promise<Stop[]> {
+// findCandidates returns ALL stopIds for the matched name (no name-dedup) so the
+// search engine can fan out across every directional variant (e.g. all 6 "Uppal Cross Road" stops)
+async function findCandidates(text: string, current: Stop | null, max = 15): Promise<Stop[]> {
   const query = text.trim()
   if (!query) return []
-  const groups = await Promise.all(buildQueryVariants(query).map(v => searchStopsByName(v)))
-  const ranked = rankStops(groups.flat(), query, false)
+  const groups = await Promise.all(buildQueryVariants(query).map(v => searchStopsByName(v, 30)))
+  const ranked = rankStops(groups.flat(), query, false)  // false = keep all stopIds per name
   if (!current) return ranked.slice(0, max)
   if (sanitize(current.stopName) !== sanitize(query)) return ranked.slice(0, max)
   return [current, ...ranked.filter(s => s.stopId !== current.stopId)].slice(0, max)
@@ -420,9 +407,7 @@ function App() {
   const [locationMessage,  setLocationMessage] = useState('Choose a stop or use your current location')
   const [selectedJourney,  setSelectedJourney] = useState<Journey | null>(null)
   const [schedule,         setSchedule]        = useState<ScheduleStop[]>([])
-  const [routes,           setRoutes]          = useState<Route[]>(DEMO_ROUTES)
-  const [alternatives,     setAlternatives]    = useState<Alternative[]>([])
-  const [stopHints,        setStopHints]       = useState<{ from: Stop[]; to: Stop[] } | null>(null)
+  const [routes,           setRoutes]          = useState<Route[]>([])
 
   const cacheRef     = useRef<Map<string, Stop[]>>(new Map())
   const reqIdRef     = useRef(0)
@@ -494,8 +479,8 @@ function App() {
     if (view !== 'routes') return
     fetch(`${API_URL}/routes`)
       .then(r => r.json())
-      .then(p => setRoutes(p.data ?? DEMO_ROUTES))
-      .catch(() => setRoutes(DEMO_ROUTES))
+      .then(p => setRoutes(p.data ?? []))
+      .catch(() => {})
   }, [view])
 
   const chooseStop = useCallback((stop: Stop) => {
@@ -525,25 +510,22 @@ function App() {
   }, [from, to])
 
   const searchJourneys = useCallback(async () => {
-    setIsSearching(true); setSelectedJourney(null); setSearchError(null)
-    setHasSearched(true); setAlternatives([]); setStopHints(null)
+    setIsSearching(true); setSelectedJourney(null); setSearchError(null); setHasSearched(true)
     try {
       if (!fromText.trim() || !toText.trim()) {
         setSearchError('Enter both starting point and destination stops.')
         setJourneys([]); return
       }
 
-      // Resolve + fetch candidates in parallel
+      // Resolve best single stop + all candidates (all stopIds for that name) in parallel
       const [[resolvedFrom, resolvedTo], fromCands, toCands] = await Promise.all([
         Promise.all([resolveStop(fromText, from), resolveStop(toText, to)]),
         findCandidates(fromText, from),
         findCandidates(toText, to),
       ])
 
-      // If either stop couldn't be resolved, show the nearest matching stops as hints
       if (!resolvedFrom || !resolvedTo) {
-        setStopHints({ from: fromCands.slice(0, 4), to: toCands.slice(0, 4) })
-        setSearchError('Could not match one or both stop names — did you mean one of these?')
+        setSearchError('Could not find one or both stops. Try a more specific name.')
         setJourneys([]); return
       }
       if (resolvedFrom.stopId === resolvedTo.stopId) {
@@ -551,8 +533,8 @@ function App() {
         setJourneys([]); return
       }
 
-      // Fan out over all candidate stop pairs; pick earliest departure.
-      // The 18-hour rule is display-only and applied at the end.
+      // Fan out: try all from-candidate × to-candidate stop-ID pairs
+      // This ensures "Uppal Cross Road twd Ghatkesar" is tried even if user just typed "Uppal Cross Road"
       const seen  = new Set<string>()
       const pairs = [
         { f: resolvedFrom, t: resolvedTo },
@@ -561,7 +543,7 @@ function App() {
         const k = `${f.stopId}|${t.stopId}`
         if (seen.has(k)) return false
         seen.add(k); return true
-      })
+      }).slice(0, 40)  // cap at 40 pairs to avoid overloading
 
       const results = await Promise.all(
         pairs.map(async ({ f, t }) => ({ f, t, journeys: await fetchJourneysForStops(f, t, 6) }))
@@ -579,54 +561,9 @@ function App() {
       setFrom(bestFrom); setTo(bestTo)
       setFromText(bestFrom.stopName); setToText(bestTo.stopName)
       setJourneys(visible)
-
-      // If nothing to show within 18 h, look for buses to stops NEAR the destination
-      if (visible.length === 0) {
-        // First: use any candidate pairs that already have buses
-        const pairAlts: Alternative[] = withJourneys
-          .filter(r => !(r.f.stopId === bestFrom.stopId && r.t.stopId === bestTo.stopId))
-          .sort((a, b) => a.journeys[0].minutesUntilDeparture - b.journeys[0].minutesUntilDeparture)
-          .slice(0, 3)
-          .map(r => ({ from: r.f, to: r.t, nextBus: r.journeys[0] }))
-
-        // Second: find stops physically near the destination and check for buses
-        let nearbyAlts: Alternative[] = []
-        const { stopLat, stopLon } = bestTo
-        if (stopLat != null && stopLon != null) {
-          const nearbyToStops = await fetchNearbyStops(stopLat, stopLon, 2500)
-          // Exclude stops already tried
-          const triedToIds = new Set(pairs.map(p => p.t.stopId))
-          const freshToStops = dedupeByName(nearbyToStops)
-            .filter(s => !triedToIds.has(s.stopId) && s.stopId !== bestFrom.stopId)
-            .slice(0, 8)
-          if (freshToStops.length > 0) {
-            const nearbyResults = await Promise.all(
-              fromCands.flatMap(fc =>
-                freshToStops.map(async ts => ({
-                  f: fc, t: ts,
-                  journeys: await fetchJourneysForStops(fc, ts, 3),
-                }))
-              )
-            )
-            nearbyAlts = nearbyResults
-              .filter(r => r.journeys.some(j => j.minutesUntilDeparture <= MAX_MINUTES))
-              .sort((a, b) => a.journeys[0].minutesUntilDeparture - b.journeys[0].minutesUntilDeparture)
-              .slice(0, 5)
-              .map(r => ({ from: r.f, to: r.t, nextBus: r.journeys[0] }))
-          }
-        }
-
-        // Merge: nearby-stop alternatives first (they have buses NOW), then pair alternatives
-        const seen = new Set<string>()
-        const merged = [...nearbyAlts, ...pairAlts].filter(a => {
-          const k = `${a.from.stopId}|${a.to.stopId}`
-          if (seen.has(k)) return false; seen.add(k); return true
-        }).slice(0, 6)
-        setAlternatives(merged)
-      }
     } catch (err) {
       setJourneys([])
-      setSearchError(err instanceof Error ? err.message : 'Could not search for buses. Is the backend running?')
+      setSearchError(err instanceof Error ? err.message : 'Could not search for buses.')
     } finally {
       setIsSearching(false)
     }
@@ -765,59 +702,11 @@ function App() {
                 ))}
               </div>
             ) : hasSearched && !searchError ? (
-              <>
-                <div className="empty-state">
-                  <Icon name="bus" />
-                  <h3>No buses found in the next 18 hours</h3>
-                  <p>No direct service between these stops shortly. Try a stop below.</p>
-                </div>
-                {alternatives.length > 0 && (
-                  <div className="alt-suggestions">
-                    <p className="alt-suggestions-label"><Icon name="pin" />Buses to stops near your destination</p>
-                    {alternatives.map((alt, i) => (
-                      <button key={i} className="alt-card"
-                        onClick={() => {
-                          setFrom(alt.from); setFromText(alt.from.stopName)
-                          setTo(alt.to);     setToText(alt.to.stopName)
-                          void searchJourneys()
-                        }}>
-                        <div className="alt-card-route">
-                          <Icon name="bus" />
-                          <span>{alt.nextBus.routeShortName}</span>
-                        </div>
-                        <div className="alt-card-info">
-                          <p>{displayName(alt.from.stopName)} <Icon name="arrow" /> {displayName(alt.to.stopName)}</p>
-                          <span><Icon name="clock" /> Departs in {fmtWait(alt.nextBus.minutesUntilDeparture)} · {fmtLabel(alt.nextBus.minutesUntilDeparture, alt.nextBus.departureTime)}</span>
-                        </div>
-                        <Icon name="chevron" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {stopHints && (
-                  <div className="alt-suggestions">
-                    <p className="alt-suggestions-label"><Icon name="pin" />Did you mean?</p>
-                    {stopHints.from.length > 0 && <div className="hint-group">
-                      <p className="hint-group-label">From:</p>
-                      {stopHints.from.map(s => (
-                        <button key={s.stopId} className="hint-chip"
-                          onClick={() => { setFrom(s); setFromText(s.stopName) }}>
-                          <Icon name="pin" /> {displayName(s.stopName)}
-                        </button>
-                      ))}
-                    </div>}
-                    {stopHints.to.length > 0 && <div className="hint-group">
-                      <p className="hint-group-label">To:</p>
-                      {stopHints.to.map(s => (
-                        <button key={s.stopId} className="hint-chip"
-                          onClick={() => { setTo(s); setToText(s.stopName) }}>
-                          <Icon name="pin" /> {displayName(s.stopName)}
-                        </button>
-                      ))}
-                    </div>}
-                  </div>
-                )}
-              </>
+              <div className="empty-state">
+                <Icon name="bus" />
+                <h3>No buses found in the next 18 hours</h3>
+                <p>No direct service between these stops. Try adjusting your stop names.</p>
+              </div>
             ) : !hasSearched ? (
               <div className="empty-state">
                 <Icon name="bus" />
