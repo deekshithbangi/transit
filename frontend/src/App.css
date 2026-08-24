@@ -715,9 +715,16 @@ footer {
     }
 
     .journey-summary {
-        grid-template-columns: 72px 1fr 20px;
-        gap: 7px;
-        padding: 15px
+        grid-template-columns: 54px minmax(0, 1fr) auto 18px;
+        min-height: 70px;
+        gap: 8px;
+        padding: 12px 14px
+    }
+
+    /* Smaller bus icon in badge on mobile */
+    .route-badge .bus-icon-img {
+        width: 22px;
+        height: 22px
     }
 
     /* Route badge: allow long names like 24B/281 to wrap on mobile only */
@@ -727,36 +734,49 @@ footer {
         text-overflow: clip;
         overflow-wrap: anywhere;
         word-break: break-word;
-        font-size: 20px
+        font-size: 15px;
+        letter-spacing: -.3px
     }
 
+    /* Arrival: column 3, right-aligned, stacked (bold time + small label) */
     .arrival {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: nowrap;
-        grid-column: 2;
-        text-align: left
+        min-width: unset;
+        text-align: right
     }
 
     .arrival strong {
-        display: inline;
-        font-size: 18px;
-        flex-shrink: 0
+        display: block;
+        font-size: 17px;
+        letter-spacing: -1px
     }
 
     .arrival span {
-        margin: 0;
-        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        margin-top: 2px;
+        font-size: 10px;
         white-space: nowrap
     }
 
+    .arrival span .icon {
+        width: 10px
+    }
+
     .journey-direction {
-        align-items: flex-start
+        font-size: 13px;
+        gap: 5px;
+        align-items: center
     }
 
     .journey-direction .icon {
-        margin-top: 1px
+        width: 13px;
+        margin-top: 0
+    }
+
+    .journey-detail {
+        font-size: 11px;
+        margin: 3px 0 0
     }
 
     .route-detail {
