@@ -249,20 +249,127 @@ function JourneyCard({ journey, expanded, schedule, onClick }: {
   )
 }
 
+// ─── Route card (lazy-loads first/last stop) ─────────────────────────────────
+function RouteCard({ route, onSelect }: { route: Route; onSelect: () => void }) {
+  const [ends, setEnds] = useState<{ from: string; to: string } | null>(null)
+  useEffect(() => {
+    let dead = false
+    fetchJson<{ data: TripInfo[] }>(`${API_URL}/routes/trips?routeId=${encodeURIComponent(route.routeId)}`)
+      .then(p => {
+        const id = p.data?.[0]?.tripId; if (!id || dead) return null
+        return fetchJson<{ data: ScheduleStop[] }>(`${API_URL}/trips/${id}/schedule`)
+      })
+      .then(p => {
+        if (!p || dead) return
+        const s = compactStops(p.data ?? [])
+        if (s.length >= 2) setEnds({ from: displayName(s[0].stopName), to: displayName(s[s.length - 1].stopName) })
+      }).catch(() => {})
+    return () => { dead = true }
+  }, [route.routeId])
+  return (
+    <button className="route-card" onClick={onSelect}>
+      <div className="rc-top"><Icon name="bus" /><span className="rc-num">{route.routeShortName}</span></div>
+      <div className="rc-ends">
+        {ends
+          ? <><span className="rc-stop">{ends.from}</span><span className="rc-arrow">↓</span><span className="rc-stop">{ends.to}</span></>
+          : <span className="rc-placeholder">…</span>}
+      </div>
+    </button>
+  )
+}
+
+function categorizeRoutes(routes: Route[]): { label: string; routes: Route[] }[] {
+  const g: Record<string, Route[]> = {}
+  for (const r of routes) {
+    const n = parseInt(r.routeShortName)
+    const label = isNaN(n) ? 'Special'
+      : n < 10 ? '1–9' : n < 50 ? '10–49' : n < 100 ? '50–99'
+      : n < 200 ? '100–199' : n < 300 ? '200–299' : n < 400 ? '300–399' : '400+'
+    ;(g[label] ??= []).push(r)
+  }
+  const order = ['1–9','10–49','50–99','100–199','200–299','300–399','400+','Special']
+  return order.filter(l => g[l]).map(l => ({ label: l, routes: g[l] }))
+}
+
 function RoutesView({ routes, onSelectRoute }: { routes: Route[]; onSelectRoute: (r: Route) => void }) {
+  const cats = useMemo(() => categorizeRoutes(routes), [routes])
+  if (!routes.length) return (
+    <section className="routes-view"><p className="eyebrow">All services</p><h1>Loading routes…</h1></section>
+  )
   return (
     <section className="routes-view">
       <p className="eyebrow">All services</p>
       <h1>Find your bus route.</h1>
-      <p className="routes-copy">Browse the available TGSRTC routes and tap a card to see stops and frequency.</p>
-      <div className="route-grid">
-        {routes.map(route => (
-          <button className="route-card" key={route.routeId} onClick={() => onSelectRoute(route)}>
-            <span className="route-number"><Icon name="bus" />{route.routeShortName}</span>
-            <span>View route details <Icon name="arrow" /></span>
-          </button>
-        ))}
-      </div>
+      {cats.map(cat => (
+        <div key={cat.label} className="route-category">
+          <p className="rc-label">{cat.label}</p>
+          <div className="route-grid">
+            {cat.routes.map(r => <RouteCard key={r.routeId} route={r} onSelect={() => onSelectRoute(r)} />)}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+// ─── Nearby / Departure Board ─────────────────────────────────────────────────
+type Departure = { route: string; dest: string; minutes: number; time: string }
+function NearbyView() {
+  const [phase,      setPhase]      = useState<'locating'|'loading'|'done'|'error'>('locating')
+  const [msg,        setMsg]        = useState('')
+  const [stopName,   setStopName]   = useState('')
+  const [departures, setDepartures] = useState<Departure[]>([])
+
+  useEffect(() => {
+    if (!navigator.geolocation) { setPhase('error'); setMsg('Geolocation not supported'); return }
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      try {
+        setPhase('loading')
+        const np = await fetchJson<{ data?: Stop[] }>(`${API_URL}/stops/nearby?lat=${coords.latitude}&lon=${coords.longitude}&radius=600`)
+        const nearStops = np.data ?? []
+        if (!nearStops.length) { setPhase('error'); setMsg('No stop found within 600 m of you'); return }
+        const stop = nearStops[0]
+        setStopName(stop.stopName)
+        const rp = await fetchJson<{ data?: Route[] }>(`${API_URL}/routes/stop/${stop.stopId}`)
+        const routeList = (rp.data ?? []).slice(0, 15)
+        const deps = (await Promise.all(routeList.map(async r => {
+          try {
+            const tp = await fetchJson<{ data: TripInfo[] }>(`${API_URL}/routes/trips?routeId=${encodeURIComponent(r.routeId)}`)
+            const tid = tp.data?.[0]?.tripId; if (!tid) return null
+            const sp = await fetchJson<{ data: ScheduleStop[] }>(`${API_URL}/trips/${tid}/schedule`)
+            const sc = compactStops(sp.data ?? []); if (sc.length < 2) return null
+            const last = sc[sc.length - 1]
+            const jp = await fetchJson<{ data?: Journey[] }>(`${API_URL}/journeys/search?fromStopId=${encodeURIComponent(stop.stopId)}&toStopId=${encodeURIComponent(last.stopId)}&limit=1`)
+            const j = jp.data?.[0]; if (!j) return null
+            return { route: r.routeShortName, dest: displayName(last.stopName), minutes: j.minutesUntilDeparture, time: j.departureTime.slice(0, 5) } as Departure
+          } catch { return null }
+        }))).filter((d): d is Departure => d !== null && d.minutes <= MAX_MINUTES)
+          .sort((a, b) => a.minutes - b.minutes)
+        setDepartures(deps)
+        setPhase('done')
+      } catch { setPhase('error'); setMsg('Failed to load departures') }
+    }, () => { setPhase('error'); setMsg('Location access was denied') })
+  }, [])
+
+  return (
+    <section className="nearby-view">
+      <p className="eyebrow">Near You{stopName ? ` · ${displayName(stopName)}` : ''}</p>
+      <h1>Upcoming buses</h1>
+      {phase === 'locating' && <p className="nb-status"><span className="nb-spin" />Finding your location…</p>}
+      {phase === 'loading' && <p className="nb-status"><span className="nb-spin" />Loading departures…</p>}
+      {phase === 'error'   && <p className="nb-error">{msg}</p>}
+      {phase === 'done' && !departures.length && <p className="nb-empty">No buses in the next 18 hours from this stop.</p>}
+      {departures.length > 0 && (
+        <div className="nb-list">
+          {departures.map((d, i) => (
+            <div key={i} className="nb-card">
+              <div className="nb-badge"><Icon name="bus" /><span>{d.route}</span></div>
+              <div className="nb-dest"><Icon name="arrow" />{d.dest}</div>
+              <div className="nb-time"><strong>{fmtWait(d.minutes)}</strong><span>{d.time}</span></div>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -391,7 +498,7 @@ function RouteDetailView({ route, onBack, onPlanRoute }: {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [view,             setView]            = useState<'planner' | 'routes' | 'routeDetail'>('planner')
+  const [view,             setView]            = useState<'planner' | 'routes' | 'routeDetail' | 'nearby'>('planner')
   const [menuOpen,         setMenuOpen]        = useState(false)
   const [selectedRoute,    setSelectedRoute]   = useState<Route | null>(null)
   const [from,             setFrom]            = useState<Stop | null>(null)
@@ -414,12 +521,14 @@ function App() {
   const activeText   = editing === 'from' ? fromText : toText
 
   // History-aware navigation — keeps browser back/forward working
-  const navigate = useCallback((nextView: 'planner' | 'routes' | 'routeDetail', route?: Route) => {
+  const navigate = useCallback((nextView: 'planner' | 'routes' | 'routeDetail' | 'nearby', route?: Route) => {
     if (nextView === 'routeDetail' && route) {
       window.history.pushState({ view: 'routeDetail', routeId: route.routeId, routeShortName: route.routeShortName }, '', `#route/${encodeURIComponent(route.routeId)}`)
       setSelectedRoute(route)
     } else if (nextView === 'routes') {
       window.history.pushState({ view: 'routes' }, '', '#routes')
+    } else if (nextView === 'nearby') {
+      window.history.pushState({ view: 'nearby' }, '', '#nearby')
     } else {
       window.history.pushState({ view: 'planner' }, '', '#')
     }
@@ -433,6 +542,7 @@ function App() {
       const s = e.state as { view?: string; routeId?: string; routeShortName?: string } | null
       setMenuOpen(false)
       if (s?.view === 'routes') setView('routes')
+      else if (s?.view === 'nearby') setView('nearby')
       else if (s?.view === 'routeDetail' && s.routeId) {
         setSelectedRoute({ routeId: s.routeId, routeShortName: s.routeShortName ?? s.routeId })
         setView('routeDetail')
@@ -559,7 +669,6 @@ function App() {
       const visible      = bestJourneys.filter(j => j.minutesUntilDeparture <= MAX_MINUTES).slice(0, 10)
 
       setFrom(bestFrom); setTo(bestTo)
-      setFromText(bestFrom.stopName); setToText(bestTo.stopName)
       setJourneys(visible)
     } catch (err) {
       setJourneys([])
@@ -614,6 +723,7 @@ function App() {
         </a>
         <nav aria-label="Main navigation">
           <button className={`nav-link ${view === 'planner' ? 'active' : ''}`} onClick={() => navigate('planner')}>Plan a trip</button>
+          <button className={`nav-link ${view === 'nearby'  ? 'active' : ''}`} onClick={() => navigate('nearby')}>Near Me</button>
           <button className={`nav-link ${view === 'routes'  ? 'active' : ''}`} onClick={() => navigate('routes')}>Routes</button>
         </nav>
         <button className={`menu-button ${menuOpen ? 'open' : ''}`} aria-label="Open menu" onClick={() => setMenuOpen(o => !o)}>
@@ -624,6 +734,8 @@ function App() {
         <div className="mobile-nav" role="menu">
           <button className={`mobile-nav-link ${view === 'planner' ? 'active' : ''}`}
             onClick={() => navigate('planner')}>Plan a trip</button>
+          <button className={`mobile-nav-link ${view === 'nearby' ? 'active' : ''}`}
+            onClick={() => navigate('nearby')}>Near Me</button>
           <button className={`mobile-nav-link ${view === 'routes' ? 'active' : ''}`}
             onClick={() => navigate('routes')}>Routes</button>
         </div>
@@ -716,6 +828,8 @@ function App() {
             ) : null}
           </section>
         </>
+      ) : view === 'nearby' ? (
+        <NearbyView />
       ) : view === 'routeDetail' && selectedRoute ? (
         <RouteDetailView
           route={selectedRoute}
