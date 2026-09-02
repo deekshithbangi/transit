@@ -487,18 +487,25 @@ function AppInner() {
         )}
       </Map>
 
-      {/* ── Pick-on-map mode: center pin + confirm/cancel ── */}
+      {/* ── Pick-on-map mode: pink dot + Options near bar ── */}
       {pickOnMap && (
         <>
-          <div className="map-pin-center">
-            <svg viewBox="0 0 24 36" width="36" height="54">
-              <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z" fill="#e91e63" />
-              <circle cx="12" cy="12" r="5" fill="#fff" />
-            </svg>
-          </div>
-          <div className="map-pick-actions">
-            <button className="map-pick-cancel" onClick={cancelPickOnMap}>Cancel</button>
-            <button className="map-pick-confirm" onClick={confirmPickOnMap}>Choose this location</button>
+          <div className="map-pink-dot" />
+          <div className="map-pick-bar">
+            <button className="map-pick-back" onClick={cancelPickOnMap} aria-label="Back">
+              <LocationIcon />
+            </button>
+            <div className="map-pick-info">
+              <span className="map-pick-label">Options near</span>
+              <span className="map-pick-coords">
+                {pickCenter ? `${pickCenter.lat.toFixed(4)}, ${pickCenter.lng.toFixed(4)}` : '...'}
+              </span>
+            </div>
+            <button className="map-pick-go" onClick={confirmPickOnMap} aria-label="Go">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="icon-svg">
+                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+              </svg>
+            </button>
           </div>
         </>
       )}
