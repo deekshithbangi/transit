@@ -235,14 +235,16 @@ html, body, #root {
 }
 
 .search-field-row {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   border: 2px solid transparent;
   transition: border-color 0.15s ease, background 0.15s ease;
+  min-width: 0;
 }
 
 .search-field-row.active {
@@ -670,6 +672,75 @@ html, body, #root {
   font-size: 12px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.3);
+}
+
+/* ─── Pick-on-map mode ───────────────────────────────────────────────────── */
+.map-pin-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  z-index: 1500;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+  animation: pinBounce 0.3s ease-out;
+}
+
+@keyframes pinBounce {
+  0%   { transform: translate(-50%, -120%); }
+  60%  { transform: translate(-50%, -95%); }
+  100% { transform: translate(-50%, -100%); }
+}
+
+.map-pick-actions {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1500;
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px 28px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+}
+
+.map-pick-cancel {
+  flex: 0 0 auto;
+  padding: 14px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 28px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.map-pick-cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.map-pick-confirm {
+  flex: 1;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 28px;
+  background: #e91e63;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.map-pick-confirm:hover {
+  background: #d81b60;
+}
+
+.map-pick-confirm:active {
+  transform: scale(0.97);
 }
 
 /* ─── Desktop adjustments ────────────────────────────────────────────────── */
