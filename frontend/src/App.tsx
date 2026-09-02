@@ -3,20 +3,87 @@ import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps'
 import './App.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type LatLng = { lat: number; lng: number }
+type LatLng       = { lat: number; lng: number }
+type Stop         = { stopId: string; stopName: string; stopLat?: number; stopLon?: number }
 type RecentSearch = { name: string; subtitle: string; timestamp: number }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
-const HYDERABAD: LatLng = { lat: 17.385, lng: 78.4867 }
-const RECENTS_KEY = 'transit_recent_searches'
-const MAX_RECENTS = 8
+const GOOGLE_MAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
+const API_URL            = import.meta.env.VITE_API_URL ?? '/api'
+const HYDERABAD: LatLng  = { lat: 17.385, lng: 78.4867 }
+const RECENTS_KEY        = 'transit_recent_searches'
+const MAX_RECENTS        = 8
+const STOP_SEARCH_LIMIT  = 30
+
+// ─── API helpers ──────────────────────────────────────────────────────────────
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url)
+  const payload = await res.json()
+  if (!res.ok) throw new Error(payload.message ?? 'Request failed')
+  return payload
+}
+
+async function searchStopsByName(name: string, size = STOP_SEARCH_LIMIT): Promise<Stop[]> {
+  const payload = await fetchJson<{ data?: { content?: Stop[] } }>(
+    `${API_URL}/stops/search?name=${encodeURIComponent(name)}&size=${size}`,
+  )
+  return (payload.data?.content ?? []).map(({ stopId, stopName, stopLat, stopLon }: Stop) => (
+    { stopId, stopName, stopLat, stopLon }
+  ))
+}
+
+// ─── Text utilities ───────────────────────────────────────────────────────────
+function sanitize(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function displayName(name: string): string {
+  return name.replace(/\s+/g, ' ').trim()
+}
+
+// ─── Stop dedup & ranking (proven logic from previous codebase) ───────────────
+function dedupeById(stops: Stop[]): Stop[] {
+  const seen = new Set<string>()
+  return stops.filter(s => { if (seen.has(s.stopId)) return false; seen.add(s.stopId); return true })
+}
+
+function dedupeByName(stops: Stop[]): Stop[] {
+  const seen = new Set<string>()
+  return stops.filter(s => {
+    const n = sanitize(displayName(s.stopName))
+    if (!n || seen.has(n)) return false
+    seen.add(n)
+    return true
+  })
+}
+
+function tokenize(value: string): string[] {
+  return sanitize(value).split(' ').filter(t => t.length >= 2)
+}
+
+function scoreStop(stop: Stop, query: string, tokens: string[]): number {
+  const name = sanitize(stop.stopName)
+  if (!name) return 0
+  if (name === query) return 10_000
+  if (name.startsWith(query)) return 9_000
+  if (name.includes(query)) return 8_000
+  return tokens.filter(t => name.includes(t)).length * 100 - name.length
+}
+
+function rankStops(stops: Stop[], query: string): Stop[] {
+  const q = sanitize(query)
+  const tokens = tokenize(query)
+  const ranked = [...dedupeById(stops)].sort((a, b) => {
+    const diff = scoreStop(b, q, tokens) - scoreStop(a, q, tokens)
+    return diff !== 0 ? diff : a.stopName.localeCompare(b.stopName)
+  })
+  return dedupeByName(ranked)
+}
 
 // ─── LocalStorage helpers ─────────────────────────────────────────────────────
 function loadRecents(): RecentSearch[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]')
-  } catch { return [] }
+  try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]') }
+  catch { return [] }
 }
 
 function saveRecent(entry: RecentSearch) {
@@ -100,24 +167,32 @@ function MoreIcon() {
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   // Location state
-  const [userPos, setUserPos] = useState<LatLng | null>(null)
-  const [accuracy, setAccuracy] = useState(50)
-  const [locError, setLocError] = useState<string | null>(null)
+  const [userPos, setUserPos]           = useState<LatLng | null>(null)
+  const [accuracy, setAccuracy]         = useState(50)
+  const [locError, setLocError]         = useState<string | null>(null)
   const [locationName, setLocationName] = useState('Current location')
 
-  // Search state
-  const [showSearch, setShowSearch] = useState(false)
-  const [dualMode, setDualMode] = useState(false)
-  const [fromText, setFromText] = useState('')
-  const [toText, setToText] = useState('')
-  const [activeField, setActiveField] = useState<'from' | 'to'>('to')
-  const [recents, setRecents] = useState<RecentSearch[]>(loadRecents)
+  // Search UI state
+  const [showSearch, setShowSearch]     = useState(false)
+  const [dualMode, setDualMode]         = useState(false)
+  const [fromText, setFromText]         = useState('')
+  const [toText, setToText]             = useState('')
+  const [activeField, setActiveField]   = useState<'from' | 'to'>('to')
+  const [recents, setRecents]           = useState<RecentSearch[]>(loadRecents)
 
-  const toInputRef = useRef<HTMLInputElement>(null)
-  const fromInputRef = useRef<HTMLInputElement>(null)
+  // Stop suggestion state
+  const [suggestions, setSuggestions]   = useState<Stop[]>([])
+  const [isLoadingSugg, setIsLoadingSugg] = useState(false)
+  const [fromStop, setFromStop]         = useState<Stop | null>(null)
+  const [toStop, setToStop]             = useState<Stop | null>(null)
+
+  const toInputRef     = useRef<HTMLInputElement>(null)
+  const fromInputRef   = useRef<HTMLInputElement>(null)
   const singleInputRef = useRef<HTMLInputElement>(null)
+  const cacheRef       = useRef<Map<string, Stop[]>>(new Map())
+  const reqIdRef       = useRef(0)
 
-  // Request high-accuracy location on mount
+  // ── GPS watch ──
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocError('Geolocation is not supported by your browser')
@@ -131,7 +206,7 @@ function App() {
       },
       (err) => {
         const msgs: Record<number, string> = {
-          1: 'Location access denied. Please enable it in browser settings.',
+          1: 'Location access denied. Enable it in browser settings.',
           2: 'Location unavailable. Please try again.',
           3: 'Location request timed out.',
         }
@@ -142,13 +217,13 @@ function App() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // Reverse geocode user location for display name
+  // ── Reverse geocode for display name ──
   useEffect(() => {
     if (!userPos) return
     setLocationName(`${userPos.lat.toFixed(4)}, ${userPos.lng.toFixed(4)}`)
   }, [userPos])
 
-  // Auto-focus input when search opens
+  // ── Auto-focus input when search opens ──
   useEffect(() => {
     if (!showSearch) return
     const timer = setTimeout(() => {
@@ -161,52 +236,110 @@ function App() {
     return () => clearTimeout(timer)
   }, [showSearch, dualMode, activeField])
 
-  // Open search overlay
+  // ── Fetch stop suggestions with debounce + cache ──
+  const activeText = dualMode
+    ? (activeField === 'from' ? fromText : toText)
+    : toText
+
+  useEffect(() => {
+    if (!showSearch) { setSuggestions([]); return }
+    const q = sanitize(activeText.trim())
+    if (q.length < 2) { setSuggestions([]); return }
+
+    const cache = cacheRef.current
+    const cached = cache.get(q)
+    if (cached) { setSuggestions(cached.slice(0, 10)); return }
+
+    // Check prefix cache for instant results while API loads
+    const prefixEntry = [...cache.entries()]
+      .filter(([k]) => q.startsWith(k))
+      .sort((a, b) => b[0].length - a[0].length)[0]
+    if (prefixEntry) setSuggestions(rankStops(prefixEntry[1], activeText).slice(0, 10))
+
+    const id = ++reqIdRef.current
+    setIsLoadingSugg(true)
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const remote = await searchStopsByName(activeText.trim(), STOP_SEARCH_LIMIT)
+        const merged = prefixEntry ? [...prefixEntry[1], ...remote] : remote
+        const ranked = rankStops(merged, activeText.trim())
+        cache.set(q, ranked)
+        if (reqIdRef.current !== id) return
+        setSuggestions(ranked.slice(0, 10))
+      } catch {
+        if (reqIdRef.current !== id) return
+        if (!prefixEntry) setSuggestions([])
+      } finally {
+        if (reqIdRef.current === id) setIsLoadingSugg(false)
+      }
+    }, 200)
+
+    return () => { window.clearTimeout(timer); setIsLoadingSugg(false) }
+  }, [activeText, showSearch, dualMode, activeField])
+
+  // ── Actions ──
   const openSearch = useCallback(() => {
     setShowSearch(true)
     setDualMode(false)
     setToText('')
     setActiveField('to')
+    setSuggestions([])
   }, [])
 
-  // Close search overlay
   const closeSearch = useCallback(() => {
     setShowSearch(false)
     setDualMode(false)
     setFromText('')
     setToText('')
+    setSuggestions([])
   }, [])
 
-  // Toggle single ↔ dual mode
   const toggleDualMode = useCallback(() => {
     setDualMode(prev => {
       if (!prev) {
-        // Switching to dual: set "from" to current location
         setFromText(locationName)
         setActiveField('to')
       }
       return !prev
     })
+    setSuggestions([])
   }, [locationName])
 
-  // Swap from ↔ to
   const swapFields = useCallback(() => {
-    setFromText(prev => {
-      const old = prev
-      setToText(current => {
-        setFromText(current)
-        return old
-      })
-      return prev // will be overwritten
-    })
-    // Simpler approach:
     const f = fromText
     const t = toText
     setFromText(t)
     setToText(f)
-  }, [fromText, toText])
+    // Also swap resolved stops
+    const fs = fromStop
+    const ts = toStop
+    setFromStop(ts)
+    setToStop(fs)
+    setSuggestions([])
+  }, [fromText, toText, fromStop, toStop])
 
-  // Select a recent search
+  const chooseStop = useCallback((stop: Stop) => {
+    const name = displayName(stop.stopName)
+    if (dualMode) {
+      if (activeField === 'to') {
+        setToText(name)
+        setToStop(stop)
+      } else {
+        setFromText(name)
+        setFromStop(stop)
+      }
+    } else {
+      setToText(name)
+      setToStop(stop)
+    }
+    setSuggestions([])
+    // Save to recents
+    const entry: RecentSearch = { name, subtitle: stop.stopId, timestamp: Date.now() }
+    saveRecent(entry)
+    setRecents(loadRecents())
+  }, [dualMode, activeField])
+
   const selectRecent = useCallback((recent: RecentSearch) => {
     if (dualMode) {
       if (activeField === 'to') setToText(recent.name)
@@ -214,12 +347,11 @@ function App() {
     } else {
       setToText(recent.name)
     }
-    // Save to recents
     saveRecent(recent)
     setRecents(loadRecents())
+    setSuggestions([])
   }, [dualMode, activeField])
 
-  // Select "Current location" as from
   const selectCurrentLocation = useCallback(() => {
     if (dualMode) {
       setFromText(locationName)
@@ -229,6 +361,8 @@ function App() {
   }, [dualMode, locationName])
 
   const center = userPos ?? HYDERABAD
+  const hasActiveQuery = sanitize(activeText.trim()).length >= 2
+  const showSuggestions = showSearch && hasActiveQuery && suggestions.length > 0
 
   return (
     <div className="app-shell">
@@ -287,7 +421,6 @@ function App() {
           {/* Green header */}
           <div className="search-header">
             {dualMode ? (
-              /* ── Dual mode: from + to fields ── */
               <div className="search-header-dual">
                 <button className="search-back-btn" onClick={closeSearch} aria-label="Back">
                   <BackIcon />
@@ -301,7 +434,7 @@ function App() {
                       className="search-field-input"
                       placeholder="Current location"
                       value={fromText}
-                      onChange={e => setFromText(e.target.value)}
+                      onChange={e => { setFromText(e.target.value); setFromStop(null) }}
                       onFocus={() => setActiveField('from')}
                     />
                   </div>
@@ -313,17 +446,16 @@ function App() {
                       className="search-field-input"
                       placeholder="Destination"
                       value={toText}
-                      onChange={e => setToText(e.target.value)}
+                      onChange={e => { setToText(e.target.value); setToStop(null) }}
                       onFocus={() => setActiveField('to')}
                     />
                   </div>
                 </div>
-                <button className="swap-btn" onClick={swapFields} aria-label="Swap start and destination">
+                <button className="swap-btn" onClick={swapFields} aria-label="Swap">
                   <SwapIcon />
                 </button>
               </div>
             ) : (
-              /* ── Single mode: destination only ── */
               <div className="search-header-single">
                 <button className="search-back-btn" onClick={closeSearch} aria-label="Back">
                   <SearchIcon />
@@ -334,7 +466,7 @@ function App() {
                   className="search-field-input"
                   placeholder="Line or destination"
                   value={toText}
-                  onChange={e => setToText(e.target.value)}
+                  onChange={e => { setToText(e.target.value); setToStop(null) }}
                 />
                 <button className="swap-btn" onClick={toggleDualMode} aria-label="Add starting point">
                   <SwapIcon />
@@ -345,74 +477,118 @@ function App() {
 
           {/* Search body */}
           <div className="search-body">
-            {/* Quick actions */}
-            <div className="quick-actions">
-              <button className="quick-action-card">
-                <span className="qa-icon"><PinIcon /></span>
-                <span className="qa-label">Choose on map</span>
-                <ChevronRightIcon />
-              </button>
-
-              {dualMode && userPos && (
-                <button className="quick-action-card" onClick={selectCurrentLocation}>
-                  <span className="qa-icon"><LocationIcon /></span>
-                  <span className="qa-info">
-                    <span className="qa-label">Current location</span>
-                    <span className="qa-sub">{locationName}</span>
-                  </span>
-                  <ChevronRightIcon />
-                </button>
-              )}
-
-              {!dualMode && (
-                <>
+            {/* ── Stop suggestions (when user is typing) ── */}
+            {showSuggestions ? (
+              <div className="suggestions-list">
+                {isLoadingSugg && (
+                  <div className="sugg-loading">
+                    <span className="sugg-spinner" />
+                    <span>Searching stops…</span>
+                  </div>
+                )}
+                {suggestions.map(stop => (
+                  <button
+                    key={stop.stopId}
+                    className="suggestion-item"
+                    onClick={() => chooseStop(stop)}
+                  >
+                    <span className="sugg-icon"><PinIcon /></span>
+                    <span className="sugg-info">
+                      <span className="sugg-name">{displayName(stop.stopName)}</span>
+                      <span className="sugg-sub">{stop.stopId}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* ── Quick actions (when not typing) ── */}
+                <div className="quick-actions">
                   <button className="quick-action-card">
-                    <span className="qa-icon"><HomeIcon /></span>
-                    <span className="qa-label">Set home</span>
+                    <span className="qa-icon"><PinIcon /></span>
+                    <span className="qa-label">Choose on map</span>
                     <ChevronRightIcon />
                   </button>
+
+                  {dualMode && userPos && (
+                    <button className="quick-action-card" onClick={selectCurrentLocation}>
+                      <span className="qa-icon"><LocationIcon /></span>
+                      <span className="qa-info">
+                        <span className="qa-label">Current location</span>
+                        <span className="qa-sub">{locationName}</span>
+                      </span>
+                      <ChevronRightIcon />
+                    </button>
+                  )}
+
+                  {!dualMode && (
+                    <>
+                      <button className="quick-action-card">
+                        <span className="qa-icon"><HomeIcon /></span>
+                        <span className="qa-label">Set home</span>
+                        <ChevronRightIcon />
+                      </button>
+                      <button className="quick-action-card">
+                        <span className="qa-icon qa-icon-work">
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="icon-svg">
+                            <path d="M20 7h-4V5c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 5h4v2h-4V5z" />
+                          </svg>
+                        </span>
+                        <span className="qa-label">Set work</span>
+                        <ChevronRightIcon />
+                      </button>
+                    </>
+                  )}
+
                   <button className="quick-action-card">
-                    <span className="qa-icon qa-icon-work">
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="icon-svg">
-                        <path d="M20 7h-4V5c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 5h4v2h-4V5z" />
+                    <span className="qa-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon-svg">
+                        <rect x="3" y="4" width="18" height="18" rx="2" />
+                        <path d="M16 2v4M8 2v4M3 10h18" />
+                        <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
                       </svg>
                     </span>
-                    <span className="qa-label">Set work</span>
+                    <span className="qa-label">Show upcoming events</span>
                     <ChevronRightIcon />
                   </button>
-                </>
-              )}
-
-              <button className="quick-action-card">
-                <span className="qa-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon-svg">
-                    <rect x="3" y="4" width="18" height="18" rx="2" />
-                    <path d="M16 2v4M8 2v4M3 10h18" />
-                    <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
-                  </svg>
-                </span>
-                <span className="qa-label">Show upcoming events</span>
-                <ChevronRightIcon />
-              </button>
-            </div>
-
-            {/* Recent searches */}
-            {recents.length > 0 && (
-              <div className="recents-section">
-                <p className="recents-label">RECENT</p>
-                <div className="recents-list">
-                  {recents.map((r, i) => (
-                    <button key={`${r.name}-${i}`} className="recent-item" onClick={() => selectRecent(r)}>
-                      <span className="recent-icon"><PinIcon /></span>
-                      <span className="recent-info">
-                        <span className="recent-name">{r.name}</span>
-                        <span className="recent-sub">{r.subtitle}</span>
-                      </span>
-                      <span className="recent-more"><MoreIcon /></span>
-                    </button>
-                  ))}
                 </div>
+
+                {/* ── Recent searches ── */}
+                {recents.length > 0 && (
+                  <div className="recents-section">
+                    <p className="recents-label">RECENT</p>
+                    <div className="recents-list">
+                      {recents.map((r, i) => (
+                        <button key={`${r.name}-${i}`} className="recent-item" onClick={() => selectRecent(r)}>
+                          <span className="recent-icon"><PinIcon /></span>
+                          <span className="recent-info">
+                            <span className="recent-name">{r.name}</span>
+                            <span className="recent-sub">{r.subtitle}</span>
+                          </span>
+                          <span className="recent-more"><MoreIcon /></span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Loading indicator when no cached results yet */}
+            {hasActiveQuery && suggestions.length === 0 && isLoadingSugg && (
+              <div className="sugg-loading-full">
+                <span className="sugg-spinner" />
+                <span>Searching stops…</span>
+              </div>
+            )}
+
+            {/* No results message */}
+            {hasActiveQuery && suggestions.length === 0 && !isLoadingSugg && (
+              <div className="sugg-empty">
+                <SearchIcon />
+                <p>No stops found for "{activeText.trim()}"</p>
+                <p className="sugg-empty-hint">Try a different spelling or shorter name</p>
               </div>
             )}
           </div>
