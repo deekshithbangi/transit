@@ -159,7 +159,8 @@ function usePlacesAutocomplete() {
 
   useEffect(() => {
     if (places) {
-      serviceRef.current = new places.AutocompleteService()
+      // Use the global google.maps.places AutocompleteService constructor
+      serviceRef.current = new google.maps.places.AutocompleteService()
     }
   }, [places])
 
@@ -175,9 +176,11 @@ function usePlacesAutocomplete() {
         } as unknown as google.maps.places.LocationBias,
       })
       return (res.predictions ?? []).slice(0, 5).map(p => ({
-        placeId: p.placeId,
-        name: p.structuredFormatting?.mainText ?? p.description,
-        subtitle: p.structuredFormatting?.secondaryText ?? '',
+        placeId: // AutocompletePrediction uses snake_case in types
+          // prefer place_id when available
+          (p as any).place_id ?? ((p as any).placeId as string | undefined) ?? '',
+        name: (p as any).structured_formatting?.main_text ?? p.description,
+        subtitle: (p as any).structured_formatting?.secondary_text ?? '',
       }))
     } catch {
       return []
@@ -211,7 +214,7 @@ function AppInner() {
   const toInputRef     = useRef<HTMLInputElement>(null)
   const fromInputRef   = useRef<HTMLInputElement>(null)
   const singleInputRef = useRef<HTMLInputElement>(null)
-  const cacheRef       = useRef<Map<string, Stop[]>>(new Map())
+  const cacheRef       = useRef<globalThis.Map<string, Stop[]>>(new globalThis.Map())
   const reqIdRef       = useRef(0)
 
   // Google Places
