@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps'
+import { APIProvider, Map, AdvancedMarker, useMapsLibrary } from '@vis.gl/react-google-maps'
 import './App.css'
+import busStopIcon from './assets/bus-stop-icon.png'
+import locationPinIcon from './assets/location-pin-icon.png'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type LatLng       = { lat: number; lng: number }
-type Stop         = { stopId: string; stopName: string; stopLat?: number; stopLon?: number }
-type RecentSearch = { name: string; subtitle: string; timestamp: number }
+type LatLng = { lat: number; lng: number }
+type Stop = { stopId: string; stopName: string; stopLat?: number; stopLon?: number }
+type PlaceResult = { placeId: string; name: string; subtitle: string }
+type SearchResult = { type: 'stop'; stop: Stop } | { type: 'place'; place: PlaceResult }
+type RecentSearch = { name: string; subtitle: string; timestamp: number; resultType: 'stop' | 'place' }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const GOOGLE_MAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
-const API_URL            = import.meta.env.VITE_API_URL ?? '/api'
-const HYDERABAD: LatLng  = { lat: 17.385, lng: 78.4867 }
-const RECENTS_KEY        = 'transit_recent_searches'
-const MAX_RECENTS        = 8
-const STOP_SEARCH_LIMIT  = 30
+const GOOGLE_MAPS_KEY  = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
+const API_URL          = import.meta.env.VITE_API_URL ?? '/api'
+const HYDERABAD: LatLng = { lat: 17.385, lng: 78.4867 }
+const RECENTS_KEY      = 'transit_recent_searches'
+const MAX_RECENTS      = 8
+const STOP_SEARCH_LIMIT = 30
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 async function fetchJson<T>(url: string): Promise<T> {
@@ -41,7 +45,7 @@ function displayName(name: string): string {
   return name.replace(/\s+/g, ' ').trim()
 }
 
-// ─── Stop dedup & ranking (proven logic from previous codebase) ───────────────
+// ─── Stop dedup & ranking ─────────────────────────────────────────────────────
 function dedupeById(stops: Stop[]): Stop[] {
   const seen = new Set<string>()
   return stops.filter(s => { if (seen.has(s.stopId)) return false; seen.add(s.stopId); return true })
@@ -101,7 +105,6 @@ function SearchIcon() {
     </svg>
   )
 }
-
 function SwapIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -110,7 +113,6 @@ function SwapIcon() {
     </svg>
   )
 }
-
 function BackIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -119,17 +121,6 @@ function BackIcon() {
     </svg>
   )
 }
-
-function PinIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="icon-svg">
-      <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="10" r="2.5" />
-    </svg>
-  )
-}
-
 function LocationIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -138,7 +129,6 @@ function LocationIcon() {
     </svg>
   )
 }
-
 function ChevronRightIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -147,7 +137,6 @@ function ChevronRightIcon() {
     </svg>
   )
 }
-
 function HomeIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className="icon-svg">
@@ -155,7 +144,6 @@ function HomeIcon() {
     </svg>
   )
 }
-
 function MoreIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className="icon-svg icon-small">
@@ -164,33 +152,70 @@ function MoreIcon() {
   )
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
-function App() {
+// ─── Google Places hook ───────────────────────────────────────────────────────
+function usePlacesAutocomplete() {
+  const places = useMapsLibrary('places')
+  const serviceRef = useRef<google.maps.places.AutocompleteService | null>(null)
+
+  useEffect(() => {
+    if (places) {
+      serviceRef.current = new places.AutocompleteService()
+    }
+  }, [places])
+
+  const search = useCallback(async (query: string): Promise<PlaceResult[]> => {
+    if (!serviceRef.current || query.trim().length < 2) return []
+    try {
+      const res = await serviceRef.current.getPlacePredictions({
+        input: query,
+        componentRestrictions: { country: 'in' },
+        locationBias: {
+          center: HYDERABAD,
+          radius: 100_000, // 100km around Hyderabad
+        } as unknown as google.maps.places.LocationBias,
+      })
+      return (res.predictions ?? []).slice(0, 5).map(p => ({
+        placeId: p.placeId,
+        name: p.structuredFormatting?.mainText ?? p.description,
+        subtitle: p.structuredFormatting?.secondaryText ?? '',
+      }))
+    } catch {
+      return []
+    }
+  }, [])
+
+  return { search, ready: !!places }
+}
+
+// ─── Inner App (needs to be inside APIProvider) ───────────────────────────────
+function AppInner() {
   // Location state
   const [userPos, setUserPos]           = useState<LatLng | null>(null)
   const [accuracy, setAccuracy]         = useState(50)
   const [locError, setLocError]         = useState<string | null>(null)
-  const [locationName, setLocationName] = useState('Current location')
 
   // Search UI state
   const [showSearch, setShowSearch]     = useState(false)
-  const [dualMode, setDualMode]         = useState(false)
-  const [fromText, setFromText]         = useState('')
-  const [toText, setToText]             = useState('')
-  const [activeField, setActiveField]   = useState<'from' | 'to'>('to')
-  const [recents, setRecents]           = useState<RecentSearch[]>(loadRecents)
+  const [dualMode, setDualMode]        = useState(false)
+  const [fromText, setFromText]        = useState('')
+  const [toText, setToText]            = useState('')
+  const [activeField, setActiveField]  = useState<'from' | 'to'>('to')
+  const [recents, setRecents]          = useState<RecentSearch[]>(loadRecents)
 
-  // Stop suggestion state
-  const [suggestions, setSuggestions]   = useState<Stop[]>([])
-  const [isLoadingSugg, setIsLoadingSugg] = useState(false)
-  const [fromStop, setFromStop]         = useState<Stop | null>(null)
-  const [toStop, setToStop]             = useState<Stop | null>(null)
+  // Search results state
+  const [results, setResults]          = useState<SearchResult[]>([])
+  const [isLoading, setIsLoading]      = useState(false)
+  const [fromStop, setFromStop]        = useState<Stop | null>(null)
+  const [toStop, setToStop]            = useState<Stop | null>(null)
 
   const toInputRef     = useRef<HTMLInputElement>(null)
   const fromInputRef   = useRef<HTMLInputElement>(null)
   const singleInputRef = useRef<HTMLInputElement>(null)
   const cacheRef       = useRef<Map<string, Stop[]>>(new Map())
   const reqIdRef       = useRef(0)
+
+  // Google Places
+  const { search: searchPlaces, ready: placesReady } = usePlacesAutocomplete()
 
   // ── GPS watch ──
   useEffect(() => {
@@ -217,13 +242,7 @@ function App() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // ── Reverse geocode for display name ──
-  useEffect(() => {
-    if (!userPos) return
-    setLocationName(`${userPos.lat.toFixed(4)}, ${userPos.lng.toFixed(4)}`)
-  }, [userPos])
-
-  // ── Auto-focus input when search opens ──
+  // ── Auto-focus input ──
   useEffect(() => {
     if (!showSearch) return
     const timer = setTimeout(() => {
@@ -236,47 +255,56 @@ function App() {
     return () => clearTimeout(timer)
   }, [showSearch, dualMode, activeField])
 
-  // ── Fetch stop suggestions with debounce + cache ──
+  // ── Combined search: backend stops + Google Places ──
   const activeText = dualMode
     ? (activeField === 'from' ? fromText : toText)
     : toText
 
   useEffect(() => {
-    if (!showSearch) { setSuggestions([]); return }
+    if (!showSearch) { setResults([]); return }
     const q = sanitize(activeText.trim())
-    if (q.length < 2) { setSuggestions([]); return }
+    if (q.length < 2) { setResults([]); return }
 
     const cache = cacheRef.current
     const cached = cache.get(q)
-    if (cached) { setSuggestions(cached.slice(0, 10)); return }
 
-    // Check prefix cache for instant results while API loads
-    const prefixEntry = [...cache.entries()]
-      .filter(([k]) => q.startsWith(k))
-      .sort((a, b) => b[0].length - a[0].length)[0]
-    if (prefixEntry) setSuggestions(rankStops(prefixEntry[1], activeText).slice(0, 10))
+    // Show cached stop results immediately
+    if (cached) {
+      setResults(cached.slice(0, 5).map(s => ({ type: 'stop' as const, stop: s })))
+    }
 
     const id = ++reqIdRef.current
-    setIsLoadingSugg(true)
+    setIsLoading(true)
 
     const timer = window.setTimeout(async () => {
       try {
-        const remote = await searchStopsByName(activeText.trim(), STOP_SEARCH_LIMIT)
-        const merged = prefixEntry ? [...prefixEntry[1], ...remote] : remote
-        const ranked = rankStops(merged, activeText.trim())
-        cache.set(q, ranked)
+        // Fire both searches in parallel
+        const [stops, places] = await Promise.all([
+          searchStopsByName(activeText.trim(), STOP_SEARCH_LIMIT),
+          placesReady ? searchPlaces(activeText.trim()) : Promise.resolve([]),
+        ])
+
         if (reqIdRef.current !== id) return
-        setSuggestions(ranked.slice(0, 10))
+
+        const ranked = rankStops(stops, activeText.trim())
+        cache.set(q, ranked)
+
+        // Merge: stops first (max 6), then places (max 4)
+        const merged: SearchResult[] = [
+          ...ranked.slice(0, 6).map(s => ({ type: 'stop' as const, stop: s })),
+          ...places.slice(0, 4).map(p => ({ type: 'place' as const, place: p })),
+        ]
+        setResults(merged)
       } catch {
         if (reqIdRef.current !== id) return
-        if (!prefixEntry) setSuggestions([])
+        if (!cached) setResults([])
       } finally {
-        if (reqIdRef.current === id) setIsLoadingSugg(false)
+        if (reqIdRef.current === id) setIsLoading(false)
       }
     }, 200)
 
-    return () => { window.clearTimeout(timer); setIsLoadingSugg(false) }
-  }, [activeText, showSearch, dualMode, activeField])
+    return () => { window.clearTimeout(timer); setIsLoading(false) }
+  }, [activeText, showSearch, dualMode, activeField, placesReady, searchPlaces])
 
   // ── Actions ──
   const openSearch = useCallback(() => {
@@ -284,7 +312,7 @@ function App() {
     setDualMode(false)
     setToText('')
     setActiveField('to')
-    setSuggestions([])
+    setResults([])
   }, [])
 
   const closeSearch = useCallback(() => {
@@ -292,50 +320,58 @@ function App() {
     setDualMode(false)
     setFromText('')
     setToText('')
-    setSuggestions([])
+    setResults([])
   }, [])
 
   const toggleDualMode = useCallback(() => {
     setDualMode(prev => {
       if (!prev) {
-        setFromText(locationName)
+        setFromText('Current location')
         setActiveField('to')
       }
       return !prev
     })
-    setSuggestions([])
-  }, [locationName])
+    setResults([])
+  }, [])
 
   const swapFields = useCallback(() => {
     const f = fromText
     const t = toText
     setFromText(t)
     setToText(f)
-    // Also swap resolved stops
     const fs = fromStop
     const ts = toStop
     setFromStop(ts)
     setToStop(fs)
-    setSuggestions([])
+    setResults([])
   }, [fromText, toText, fromStop, toStop])
 
-  const chooseStop = useCallback((stop: Stop) => {
-    const name = displayName(stop.stopName)
+  const chooseResult = useCallback((result: SearchResult) => {
+    const name = result.type === 'stop'
+      ? displayName(result.stop.stopName)
+      : result.place.name
+    const subtitle = result.type === 'stop'
+      ? result.stop.stopId
+      : result.place.subtitle
+
     if (dualMode) {
       if (activeField === 'to') {
         setToText(name)
-        setToStop(stop)
+        if (result.type === 'stop') setToStop(result.stop)
       } else {
         setFromText(name)
-        setFromStop(stop)
+        if (result.type === 'stop') setFromStop(result.stop)
       }
     } else {
       setToText(name)
-      setToStop(stop)
+      if (result.type === 'stop') setToStop(result.stop)
     }
-    setSuggestions([])
-    // Save to recents
-    const entry: RecentSearch = { name, subtitle: stop.stopId, timestamp: Date.now() }
+    setResults([])
+
+    const entry: RecentSearch = {
+      name, subtitle, timestamp: Date.now(),
+      resultType: result.type,
+    }
     saveRecent(entry)
     setRecents(loadRecents())
   }, [dualMode, activeField])
@@ -349,23 +385,23 @@ function App() {
     }
     saveRecent(recent)
     setRecents(loadRecents())
-    setSuggestions([])
+    setResults([])
   }, [dualMode, activeField])
 
   const selectCurrentLocation = useCallback(() => {
     if (dualMode) {
-      setFromText(locationName)
+      setFromText('Current location')
       setActiveField('to')
       toInputRef.current?.focus()
     }
-  }, [dualMode, locationName])
+  }, [dualMode])
 
   const center = userPos ?? HYDERABAD
   const hasActiveQuery = sanitize(activeText.trim()).length >= 2
-  const showSuggestions = showSearch && hasActiveQuery && suggestions.length > 0
+  const showResults = showSearch && hasActiveQuery && results.length > 0
 
   return (
-    <div className="app-shell">
+    <>
       {/* ── Location error banner ── */}
       {locError && !showSearch && (
         <div className="loc-error-banner">
@@ -374,34 +410,32 @@ function App() {
         </div>
       )}
 
-      {/* ── Google Map (always mounted) ── */}
-      <APIProvider apiKey={GOOGLE_MAPS_KEY}>
-        <Map
-          defaultCenter={center}
-          defaultZoom={userPos ? 16 : 13}
-          center={userPos ? center : undefined}
-          zoom={userPos ? 16 : undefined}
-          gestureHandling="greedy"
-          disableDefaultUI={true}
-          mapId="transit-dark-map"
-          colorScheme="DARK"
-          className="map-container"
-        >
-          {userPos && (
-            <AdvancedMarker position={userPos}>
-              <div className="blue-dot-wrapper">
-                <div className="blue-dot-accuracy" style={{
-                  width: Math.max(40, Math.min(accuracy * 2, 200)),
-                  height: Math.max(40, Math.min(accuracy * 2, 200)),
-                }} />
-                <div className="blue-dot" />
-              </div>
-            </AdvancedMarker>
-          )}
-        </Map>
-      </APIProvider>
+      {/* ── Google Map ── */}
+      <Map
+        defaultCenter={center}
+        defaultZoom={userPos ? 16 : 13}
+        center={userPos ? center : undefined}
+        zoom={userPos ? 16 : undefined}
+        gestureHandling="greedy"
+        disableDefaultUI={true}
+        mapId="transit-dark-map"
+        colorScheme="DARK"
+        className="map-container"
+      >
+        {userPos && (
+          <AdvancedMarker position={userPos}>
+            <div className="blue-dot-wrapper">
+              <div className="blue-dot-accuracy" style={{
+                width: Math.max(40, Math.min(accuracy * 2, 200)),
+                height: Math.max(40, Math.min(accuracy * 2, 200)),
+              }} />
+              <div className="blue-dot" />
+            </div>
+          </AdvancedMarker>
+        )}
+      </Map>
 
-      {/* ── Bottom search pill (map view) ── */}
+      {/* ── Bottom search pill ── */}
       {!showSearch && (
         <div className="bottom-bar">
           <div className="search-pill" onClick={openSearch} role="button" tabIndex={0}
@@ -431,11 +465,17 @@ function App() {
                     <input
                       ref={fromInputRef}
                       type="text"
-                      className="search-field-input"
-                      placeholder="Current location"
+                      className={`search-field-input ${fromText === 'Current location' ? 'current-loc-input' : ''}`}
+                      placeholder="Starting point"
                       value={fromText}
                       onChange={e => { setFromText(e.target.value); setFromStop(null) }}
-                      onFocus={() => setActiveField('from')}
+                      onFocus={() => {
+                        setActiveField('from')
+                        if (fromText === 'Current location') setFromText('')
+                      }}
+                      onBlur={() => {
+                        if (fromText.trim() === '') setFromText('Current location')
+                      }}
                     />
                   </div>
                   <div className={`search-field-row ${activeField === 'to' ? 'active' : ''}`}>
@@ -477,35 +517,50 @@ function App() {
 
           {/* Search body */}
           <div className="search-body">
-            {/* ── Stop suggestions (when user is typing) ── */}
-            {showSuggestions ? (
+            {showResults ? (
+              /* ── Search results (stops + places) ── */
               <div className="suggestions-list">
-                {isLoadingSugg && (
+                {isLoading && (
                   <div className="sugg-loading">
                     <span className="sugg-spinner" />
-                    <span>Searching stops…</span>
+                    <span>Searching…</span>
                   </div>
                 )}
-                {suggestions.map(stop => (
+                {results.map((r, i) => (
                   <button
-                    key={stop.stopId}
+                    key={r.type === 'stop' ? r.stop.stopId : r.place.placeId + i}
                     className="suggestion-item"
-                    onClick={() => chooseStop(stop)}
+                    onClick={() => chooseResult(r)}
                   >
-                    <span className="sugg-icon"><PinIcon /></span>
-                    <span className="sugg-info">
-                      <span className="sugg-name">{displayName(stop.stopName)}</span>
-                      <span className="sugg-sub">{stop.stopId}</span>
+                    <span className="sugg-icon">
+                      <img
+                        src={r.type === 'stop' ? busStopIcon : locationPinIcon}
+                        alt={r.type === 'stop' ? 'Bus stop' : 'Place'}
+                        className="sugg-type-icon"
+                      />
                     </span>
+                    <span className="sugg-info">
+                      <span className="sugg-name">
+                        {r.type === 'stop' ? displayName(r.stop.stopName) : r.place.name}
+                      </span>
+                      <span className="sugg-sub">
+                        {r.type === 'stop' ? 'Bus Stop' : r.place.subtitle}
+                      </span>
+                    </span>
+                    {r.type === 'stop' && (
+                      <span className="sugg-badge">TGSRTC</span>
+                    )}
                   </button>
                 ))}
               </div>
             ) : (
               <>
-                {/* ── Quick actions (when not typing) ── */}
+                {/* ── Quick actions ── */}
                 <div className="quick-actions">
                   <button className="quick-action-card">
-                    <span className="qa-icon"><PinIcon /></span>
+                    <span className="qa-icon">
+                      <img src={locationPinIcon} alt="" className="qa-type-icon" />
+                    </span>
                     <span className="qa-label">Choose on map</span>
                     <ChevronRightIcon />
                   </button>
@@ -515,7 +570,7 @@ function App() {
                       <span className="qa-icon"><LocationIcon /></span>
                       <span className="qa-info">
                         <span className="qa-label">Current location</span>
-                        <span className="qa-sub">{locationName}</span>
+                        <span className="qa-sub">Use GPS location</span>
                       </span>
                       <ChevronRightIcon />
                     </button>
@@ -561,7 +616,13 @@ function App() {
                     <div className="recents-list">
                       {recents.map((r, i) => (
                         <button key={`${r.name}-${i}`} className="recent-item" onClick={() => selectRecent(r)}>
-                          <span className="recent-icon"><PinIcon /></span>
+                          <span className="recent-icon">
+                            <img
+                              src={r.resultType === 'stop' ? busStopIcon : locationPinIcon}
+                              alt=""
+                              className="recent-type-icon"
+                            />
+                          </span>
                           <span className="recent-info">
                             <span className="recent-name">{r.name}</span>
                             <span className="recent-sub">{r.subtitle}</span>
@@ -575,25 +636,36 @@ function App() {
               </>
             )}
 
-            {/* Loading indicator when no cached results yet */}
-            {hasActiveQuery && suggestions.length === 0 && isLoadingSugg && (
+            {/* Loading with no cached results */}
+            {hasActiveQuery && results.length === 0 && isLoading && (
               <div className="sugg-loading-full">
                 <span className="sugg-spinner" />
-                <span>Searching stops…</span>
+                <span>Searching stops & places…</span>
               </div>
             )}
 
-            {/* No results message */}
-            {hasActiveQuery && suggestions.length === 0 && !isLoadingSugg && (
+            {/* No results */}
+            {hasActiveQuery && results.length === 0 && !isLoading && (
               <div className="sugg-empty">
                 <SearchIcon />
-                <p>No stops found for "{activeText.trim()}"</p>
+                <p>No stops or places found for "{activeText.trim()}"</p>
                 <p className="sugg-empty-hint">Try a different spelling or shorter name</p>
               </div>
             )}
           </div>
         </div>
       )}
+    </>
+  )
+}
+
+// ─── Root App (wraps APIProvider) ─────────────────────────────────────────────
+function App() {
+  return (
+    <div className="app-shell">
+      <APIProvider apiKey={GOOGLE_MAPS_KEY} libraries={['places']}>
+        <AppInner />
+      </APIProvider>
     </div>
   )
 }
