@@ -113,14 +113,6 @@ function SwapIcon() {
     </svg>
   )
 }
-function BackIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon-svg">
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  )
-}
 function LocationIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -216,6 +208,7 @@ function AppInner() {
   const singleInputRef = useRef<HTMLInputElement>(null)
   const cacheRef       = useRef<globalThis.Map<string, Stop[]>>(new globalThis.Map())
   const reqIdRef       = useRef(0)
+  const touchStartRef  = useRef<{ x: number; y: number } | null>(null)
 
   // Google Places
   const { search: searchPlaces, ready: placesReady } = usePlacesAutocomplete()
@@ -317,7 +310,7 @@ function AppInner() {
     setActiveField('to')
     setResults([])
   }, [])
-
+  
   const closeSearch = useCallback(() => {
     setShowSearch(false)
     setDualMode(false)
@@ -325,6 +318,26 @@ function AppInner() {
     setToText('')
     setResults([])
   }, [])
+
+  // Touch handlers: simple swipe-right-to-go-back (close search)
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    const t = e.touches[0]
+    if (t) touchStartRef.current = { x: t.clientX, y: t.clientY }
+  }, [])
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    // consider a horizontal right swipe with limited vertical movement
+    if (dx > 50 && Math.abs(dy) < 50) {
+      closeSearch()
+    }
+  }, [closeSearch])
 
   const toggleDualMode = useCallback(() => {
     setDualMode(prev => {
@@ -420,7 +433,11 @@ function AppInner() {
         center={userPos ? center : undefined}
         zoom={userPos ? 16 : undefined}
         gestureHandling="greedy"
-        disableDefaultUI={true}
+        disableDefaultUI={false}
+        zoomControl={true}
+        scrollwheel={true}
+        streetViewControl={false}
+        mapTypeControl={false}
         mapId="transit-dark-map"
         colorScheme="DARK"
         className="map-container"
@@ -454,44 +471,46 @@ function AppInner() {
 
       {/* ── Search overlay ── */}
       {showSearch && (
-        <div className="search-overlay">
+        <div className="search-overlay" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           {/* Green header */}
           <div className="search-header">
             {dualMode ? (
               <div className="search-header-dual">
-                <button className="search-back-btn" onClick={closeSearch} aria-label="Back">
-                  <BackIcon />
-                </button>
                 <div className="search-fields-dual">
-                  <div className={`search-field-row ${activeField === 'from' ? 'active' : ''}`}>
+                  <div className="search-field-wrapper">
                     <span className="field-dot field-dot-from"><LocationIcon /></span>
-                    <input
-                      ref={fromInputRef}
-                      type="text"
-                      className={`search-field-input ${fromText === 'Current location' ? 'current-loc-input' : ''}`}
-                      placeholder="Starting point"
-                      value={fromText}
-                      onChange={e => { setFromText(e.target.value); setFromStop(null) }}
-                      onFocus={() => {
-                        setActiveField('from')
-                        if (fromText === 'Current location') setFromText('')
-                      }}
-                      onBlur={() => {
-                        if (fromText.trim() === '') setFromText('Current location')
-                      }}
-                    />
+                    <div className={`search-field-row ${activeField === 'from' ? 'active' : ''}`}>
+                      <input
+                        ref={fromInputRef}
+                        type="text"
+                        className={`search-field-input ${fromText === 'Current location' ? 'current-loc-input' : ''}`}
+                        placeholder="Starting point"
+                        value={fromText}
+                        onChange={e => { setFromText(e.target.value); setFromStop(null) }}
+                        onFocus={() => {
+                          setActiveField('from')
+                          if (fromText === 'Current location') setFromText('')
+                        }}
+                        onBlur={() => {
+                          if (fromText.trim() === '') setFromText('Current location')
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className={`search-field-row ${activeField === 'to' ? 'active' : ''}`}>
+
+                  <div className="search-field-wrapper">
                     <span className="field-dot field-dot-to" />
-                    <input
-                      ref={toInputRef}
-                      type="text"
-                      className="search-field-input"
-                      placeholder="Destination"
-                      value={toText}
-                      onChange={e => { setToText(e.target.value); setToStop(null) }}
-                      onFocus={() => setActiveField('to')}
-                    />
+                    <div className={`search-field-row ${activeField === 'to' ? 'active' : ''}`}>
+                      <input
+                        ref={toInputRef}
+                        type="text"
+                        className="search-field-input"
+                        placeholder="Destination"
+                        value={toText}
+                        onChange={e => { setToText(e.target.value); setToStop(null) }}
+                        onFocus={() => setActiveField('to')}
+                      />
+                    </div>
                   </div>
                 </div>
                 <button className="swap-btn" onClick={swapFields} aria-label="Swap">

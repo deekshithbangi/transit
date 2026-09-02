@@ -227,6 +227,13 @@ html, body, #root {
   gap: 6px;
 }
 
+/* wrapper to hold an icon outside the rounded input box */
+.search-field-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .search-field-row {
   display: flex;
   align-items: center;
