@@ -674,73 +674,236 @@ html, body, #root {
   color: rgba(255, 255, 255, 0.3);
 }
 
-/* ─── Pick-on-map mode ───────────────────────────────────────────────────── */
-.map-pin-center {
+/* ─── Pick-on-map mode (Pink Dot + Magenta Bar) ──────────────────────────── */
+.map-pink-dot {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -100%);
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: #d81b60;
+  border: 3px solid #ffffff;
+  box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 6px rgba(216, 27, 96, 0.3);
   z-index: 1500;
   pointer-events: none;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
-  animation: pinBounce 0.3s ease-out;
+  animation: dotPulse 1.8s infinite ease-in-out;
 }
 
-@keyframes pinBounce {
-  0%   { transform: translate(-50%, -120%); }
-  60%  { transform: translate(-50%, -95%); }
-  100% { transform: translate(-50%, -100%); }
+@keyframes dotPulse {
+  0% { transform: scale(1); box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 4px rgba(216, 27, 96, 0.4); }
+  50% { transform: scale(1.15); box-shadow: 0 0 24px rgba(216, 27, 96, 1), 0 0 0 10px rgba(216, 27, 96, 0.2); }
+  100% { transform: scale(1); box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 4px rgba(216, 27, 96, 0.4); }
 }
 
-.map-pick-actions {
+.map-pick-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 16px;
+  right: 16px;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px 16px;
+  background: linear-gradient(90deg, #9c0058 0%, #c20072 100%);
+  border-radius: 36px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.map-pick-back {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.map-pick-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.map-pick-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.2px;
+}
+
+.map-pick-coords {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-pick-go {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: #ffffff;
+  color: #9c0058;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.map-pick-go:active {
+  transform: scale(0.92);
+}
+
+/* ─── Search Result Section Headers & Route Badges ────────────────────────── */
+.search-section-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 16px 20px 8px;
+  text-transform: uppercase;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.search-section-header:first-child {
+  border-top: none;
+}
+
+.sugg-route-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.route-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #d97706;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.route-chip-badge.metro-chip {
+  background: #2563eb;
+}
+
+.route-chip-badge.express-chip {
+  background: #dc2626;
+}
+
+/* ─── Journey Sheet / Results Card ───────────────────────────────────────── */
+.journey-sheet {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 1500;
+  max-height: 70vh;
+  background: #1c1c1e;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
+  z-index: 1200;
   display: flex;
-  gap: 12px;
-  padding: 16px 20px 28px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.25s ease-out;
 }
 
-.map-pick-cancel {
-  flex: 0 0 auto;
-  padding: 14px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 28px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
-.map-pick-cancel:hover {
-  background: rgba(255, 255, 255, 0.15);
+.journey-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #2c2c2e;
 }
 
-.map-pick-confirm {
-  flex: 1;
-  padding: 14px 24px;
+.journey-sheet-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.journey-close-btn {
+  background: transparent;
   border: none;
-  border-radius: 28px;
-  background: #e91e63;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 20px;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.map-pick-confirm:hover {
-  background: #d81b60;
+.journey-sheet-body {
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.map-pick-confirm:active {
-  transform: scale(0.97);
+.journey-card {
+  background: #2c2c2e;
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.journey-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.journey-route-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #059669;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.journey-time {
+  font-size: 14px;
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.journey-leg-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* ─── Desktop adjustments ────────────────────────────────────────────────── */
@@ -753,5 +916,12 @@ html, body, #root {
     max-width: 480px;
     padding: 8px 8px 8px 22px;
     border-radius: 36px;
+  }
+
+  .journey-sheet {
+    max-width: 500px;
+    left: 20px;
+    bottom: 20px;
+    border-radius: 20px;
   }
 }
