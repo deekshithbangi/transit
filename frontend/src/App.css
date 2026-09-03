@@ -1,11 +1,15 @@
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -69,9 +73,20 @@ html, body, #root {
 }
 
 @keyframes pulse-ring {
-  0%   { transform: scale(1);   opacity: 1; }
-  70%  { transform: scale(1.3); opacity: 0.4; }
-  100% { transform: scale(1.5); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  70% {
+    transform: scale(1.3);
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
 }
 
 /* ─── Location error banner ──────────────────────────────────────────────── */
@@ -99,8 +114,15 @@ html, body, #root {
 }
 
 @keyframes slideDown {
-  from { transform: translateY(-100%); opacity: 0; }
-  to   { transform: translateY(0);     opacity: 1; }
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* ─── Bottom search pill (map view) ──────────────────────────────────────── */
@@ -190,8 +212,15 @@ html, body, #root {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ─── Search header (green bar) ──────────────────────────────────────────── */
@@ -414,7 +443,7 @@ html, body, #root {
   font-weight: 400;
 }
 
-.quick-action-card > .icon-svg {
+.quick-action-card>.icon-svg {
   width: 16px;
   height: 16px;
   color: rgba(255, 255, 255, 0.3);
@@ -641,7 +670,9 @@ html, body, #root {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Empty state */
@@ -693,9 +724,20 @@ html, body, #root {
 }
 
 @keyframes dotPulse {
-  0% { transform: scale(1); box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 4px rgba(216, 27, 96, 0.4); }
-  50% { transform: scale(1.15); box-shadow: 0 0 24px rgba(216, 27, 96, 1), 0 0 0 10px rgba(216, 27, 96, 0.2); }
-  100% { transform: scale(1); box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 4px rgba(216, 27, 96, 0.4); }
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 4px rgba(216, 27, 96, 0.4);
+  }
+
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 24px rgba(216, 27, 96, 1), 0 0 0 10px rgba(216, 27, 96, 0.2);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 16px rgba(216, 27, 96, 0.9), 0 0 0 4px rgba(216, 27, 96, 0.4);
+  }
 }
 
 .map-pick-bar {
@@ -1020,19 +1062,6 @@ html, body, #root {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: transform 0.15s ease, background 0.15s ease;
 }
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(28, 28, 30, 0.85);
-  backdrop-filter: blur(12px);
-  color: #fbbf24;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: transform 0.15s ease, background 0.15s ease;
-}
 
 .theme-toggle-btn:hover {
   transform: scale(1.05);
@@ -1176,13 +1205,11 @@ html, body, #root {
 }
 
 .step-line.dashed {
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.3) 0,
-    rgba(255, 255, 255, 0.3) 4px,
-    transparent 4px,
-    transparent 8px
-  );
+  background: repeating-linear-gradient(to bottom,
+      rgba(255, 255, 255, 0.3) 0,
+      rgba(255, 255, 255, 0.3) 4px,
+      transparent 4px,
+      transparent 8px);
 }
 
 .step-icon-badge {
@@ -1199,10 +1226,21 @@ html, body, #root {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.step-icon-badge.walk { background: #059669; }
-.step-icon-badge.bus { background: #d97706; }
-.step-icon-badge.metro { background: #2563eb; }
-.step-icon-badge.dest { background: #e11d48; }
+.step-icon-badge.walk {
+  background: #059669;
+}
+
+.step-icon-badge.bus {
+  background: #d97706;
+}
+
+.step-icon-badge.metro {
+  background: #2563eb;
+}
+
+.step-icon-badge.dest {
+  background: #e11d48;
+}
 
 .step-content {
   flex: 1;

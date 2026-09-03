@@ -70,10 +70,7 @@ function getRouteBadgesForStop(_stopName: string): string[] {
   return []
 }
 
-function getIntermediateStops(_fromName: string, _toName: string): string[] {
-  // Returns real intermediate stop names from API data if available, empty array otherwise
-  return []
-}
+
 
 // ─── Stop dedup & ranking ─────────────────────────────────────────────────────
 function dedupeById(stops: Stop[]): Stop[] {
@@ -253,9 +250,9 @@ function usePlacesAutocomplete() {
         } as unknown as google.maps.places.LocationBias,
       })
       return (res.predictions ?? []).slice(0, 5).map(p => ({
-        placeId: p.placeId,
-        name: p.structuredFormatting?.mainText ?? p.description,
-        subtitle: p.structuredFormatting?.secondaryText ?? '',
+        placeId: p.place_id,
+        name: p.structured_formatting?.main_text ?? p.description,
+        subtitle: p.structured_formatting?.secondary_text ?? '',
       }))
     } catch {
       return []
