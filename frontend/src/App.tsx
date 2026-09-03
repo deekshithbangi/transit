@@ -495,8 +495,8 @@ function useJourneyPlanner(userPos: LatLng | null) {
     destName: string,
     startStop?: Stop | null,
     destStop?: Stop | null,
-    originLatLngOverride?: LatLng,
-    destLatLngOverride?: LatLng,
+    _originLatLngOverride?: LatLng,
+    _destLatLngOverride?: LatLng,
   ) => {
     setSelected(null)
     setIsSearching(true)
