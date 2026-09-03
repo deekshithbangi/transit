@@ -52,3 +52,4 @@ Thumbs.db
 # Environment secrets
 .env.local
 frontend/.env.local
+target

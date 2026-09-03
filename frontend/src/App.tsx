@@ -269,47 +269,111 @@ function RoutePolyline({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Hook: Google Places autocomplete (new Places API — AutocompleteSuggestion)
+// Hook: Google Places autocomplete
 //
-// The legacy usage `new google.maps.places.AutocompleteSuggestion()` +
-// `.PlacePrediction()` does not exist on the Maps JS API — it silently threw
-// on every keystroke and was swallowed by a catch block, which is why place
-// suggestions never appeared. `AutocompleteSuggestion.fetchAutocompleteSuggestions`
-// is a static method on the class itself, and each suggestion exposes a
-// `placePrediction` field with `text` / `mainText` / `secondaryText`.
+// The old code called `new google.maps.places.AutocompleteSuggestion()` +
+// `.PlacePrediction()`, neither of which exist on the Maps JS API — it threw
+// on every keystroke and was swallowed by a catch block, so place suggestions
+// never appeared. That's fixed below using the real static method,
+// `AutocompleteSuggestion.fetchAutocompleteSuggestions`.
+//
+// That method belongs to "Places API (New)", a separate product from the
+// classic "Places API" in Google Cloud — many existing API keys only have
+// the classic one enabled, which would make every call here fail silently
+// too. So we also fall back to the classic `AutocompleteService` whenever
+// the new API errors out or returns nothing, which only needs the classic
+// Places API to be enabled.
 // ═══════════════════════════════════════════════════════════════════════════
 function usePlacesAutocomplete() {
   const placesLib = useMapsLibrary('places')
   const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null)
+  const legacyServiceRef = useRef<google.maps.places.AutocompleteService | null>(null)
 
   useEffect(() => {
-    if (placesLib) sessionTokenRef.current = new placesLib.AutocompleteSessionToken()
+    if (!placesLib) return
+    sessionTokenRef.current = new placesLib.AutocompleteSessionToken()
+    legacyServiceRef.current = new placesLib.AutocompleteService()
   }, [placesLib])
+
+  const searchWithNewApi = useCallback(async (query: string): Promise<PlaceResult[]> => {
+    if (!placesLib) return []
+    if (!sessionTokenRef.current) sessionTokenRef.current = new placesLib.AutocompleteSessionToken()
+
+    const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input: query,
+      sessionToken: sessionTokenRef.current,
+      locationBias: { center: HYDERABAD, radius: PLACE_BIAS_RADIUS_M },
+      includedRegionCodes: ['in'],
+    })
+
+    return suggestions
+      .map(s => s.placePrediction)
+      .filter((p): p is google.maps.places.PlacePrediction => !!p)
+      .slice(0, 5)
+      .map(p => ({
+        placeId: p.placeId,
+        name: p.mainText?.text ?? p.text.text,
+        subtitle: p.secondaryText?.text ?? '',
+      }))
+  }, [placesLib])
+
+  const searchWithLegacyApi = useCallback((query: string): Promise<PlaceResult[]> => {
+    const service = legacyServiceRef.current
+    if (!service) return Promise.resolve([])
+
+    return new Promise(resolve => {
+      service.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: 'in' },
+          locationBias: new google.maps.Circle({ center: HYDERABAD, radius: PLACE_BIAS_RADIUS_M }),
+        },
+        (predictions, status) => {
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+            resolve([])
+            return
+          }
+          resolve(predictions.slice(0, 5).map(p => ({
+            placeId: p.place_id,
+            name: p.structured_formatting?.main_text ?? p.description,
+            subtitle: p.structured_formatting?.secondary_text ?? '',
+          })))
+        },
+      )
+    })
+  }, [])
 
   const search = useCallback(async (query: string): Promise<PlaceResult[]> => {
     if (!placesLib || query.trim().length < MIN_QUERY_LEN) return []
-    if (!sessionTokenRef.current) sessionTokenRef.current = new placesLib.AutocompleteSessionToken()
 
     try {
-      const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-        input: query,
-        sessionToken: sessionTokenRef.current,
-        locationBias: { center: HYDERABAD, radius: PLACE_BIAS_RADIUS_M },
-        includedRegionCodes: ['in'],
-      })
-
-      return suggestions
-        .map(s => s.placePrediction)
-        .filter((p): p is google.maps.places.PlacePrediction => !!p)
-        .slice(0, 5)
-        .map(p => ({
-          placeId: p.placeId,
-          name: p.mainText?.text ?? p.text.text,
-          subtitle: p.secondaryText?.text ?? '',
-        }))
+      const results = await searchWithNewApi(query)
+      if (results.length > 0) return results
     } catch (err) {
-      console.error('Places autocomplete failed:', err)
+      console.error('Places API (New) autocomplete failed, falling back to classic API:', err)
+    }
+
+    try {
+      return await searchWithLegacyApi(query)
+    } catch (err) {
+      console.error('Classic Places autocomplete also failed:', err)
       return []
+    }
+  }, [placesLib, searchWithNewApi, searchWithLegacyApi])
+
+  // Resolve a chosen place's coordinates — Autocomplete predictions never
+  // include lat/lng, only a placeId, so this is a second lookup fired once
+  // the person actually taps a suggestion.
+  const resolveLocation = useCallback(async (placeId: string): Promise<LatLng | null> => {
+    if (!placesLib) return null
+    try {
+      const place = new placesLib.Place({ id: placeId })
+      await place.fetchFields({ fields: ['location'] })
+      const loc = place.location
+      return loc ? { lat: loc.lat(), lng: loc.lng() } : null
+    } catch (err) {
+      console.error('Failed to resolve place location:', err)
+      return null
     }
   }, [placesLib])
 
@@ -319,7 +383,7 @@ function usePlacesAutocomplete() {
     if (placesLib) sessionTokenRef.current = new placesLib.AutocompleteSessionToken()
   }, [placesLib])
 
-  return { search, ready: !!placesLib, resetSession }
+  return { search, resolveLocation, ready: !!placesLib, resetSession }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -431,48 +495,29 @@ function useJourneyPlanner(userPos: LatLng | null) {
     destName: string,
     startStop?: Stop | null,
     destStop?: Stop | null,
+    originLatLngOverride?: LatLng,
+    destLatLngOverride?: LatLng,
   ) => {
     setSelected(null)
     setIsSearching(true)
     setJourneys([])
 
     try {
-      let fCandidates: Stop[] = startStop ? [startStop] : []
-      let tCandidates: Stop[] = destStop ? [destStop] : []
+      let fStop = startStop ?? null
+      let tStop = destStop ?? null
 
-      const cleanStart = startName === 'Current location' ? 'Uppal' : startName.replace(/bus station|bus stop|railway station|metro station|station/gi, '').trim()
-      const cleanDest = destName.replace(/bus station|bus stop|railway station|metro station|station/gi, '').trim()
-
-      if (fCandidates.length === 0 && cleanStart) {
-        fCandidates = await searchStopsByName(cleanStart, 5)
+      if (!fStop) {
+        const found = await searchStopsByName(startName === 'Current location' ? '' : startName, 3)
+        fStop = found[0] ?? null
       }
-      if (tCandidates.length === 0 && cleanDest) {
-        tCandidates = await searchStopsByName(cleanDest, 5)
-      }
-
-      let rawList: any[] = []
-      let fStop: Stop | null = fCandidates[0] ?? null
-      let tStop: Stop | null = tCandidates[0] ?? null
-
-      // Search across candidates to find matching routes from GTFS backend
-      for (const fc of fCandidates) {
-        for (const tc of tCandidates) {
-          if (fc.stopId === tc.stopId) continue
-          const res = await fetchJourneys(fc.stopId, tc.stopId)
-          if (res.length > 0) {
-            rawList = res
-            fStop = fc
-            tStop = tc
-            break
-          }
-        }
-        if (rawList.length > 0) break
+      if (!tStop) {
+        const found = await searchStopsByName(destName, 3)
+        tStop = found[0] ?? null
       }
 
-      // Fallback: If candidate pairs yielded no results, query first available stop pair
-      if (rawList.length === 0 && fStop && tStop) {
-        rawList = await fetchJourneys(fStop.stopId, tStop.stopId)
-      }
+      const fId = fStop?.stopId ?? ''
+      const tId = tStop?.stopId ?? ''
+      if (!fId || !tId) { setJourneys([]); return }
 
       const fName = fStop?.stopName || startName || 'Start Stop'
       const tName = tStop?.stopName || destName || 'Destination Stop'
@@ -481,6 +526,7 @@ function useJourneyPlanner(userPos: LatLng | null) {
       const tLat = tStop?.stopLat
       const tLon = tStop?.stopLon
 
+      const rawList = await fetchJourneys(fId, tId)
       const parsed: JourneyOption[] = rawList.map((j: any, i: number) => ({
         id: j.tripId ? `${j.tripId}-${i}` : `journey-${i}`,
         routeShortName: j.routeShortName || '',
