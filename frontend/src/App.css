@@ -811,6 +811,42 @@ html, body, #root {
 }
 
 /* ─── Journey Sheet / Results Card ───────────────────────────────────────── */
+/* ─── Back Button Pill (Modern sleek back arrow) ───────────────────────── */
+.back-btn-pill {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(12px);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.back-btn-pill:hover {
+  transform: scale(1.05);
+  background: rgba(31, 41, 55, 0.95);
+}
+
+.back-btn-pill:active {
+  transform: scale(0.95);
+}
+
+.app-shell[data-theme="light"] .back-btn-pill {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #0f172a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
 /* ─── Journey Sheet / Results Card (Mobile First) ────────────────────────── */
 .journey-sheet {
   position: absolute;
@@ -829,12 +865,13 @@ html, body, #root {
 }
 
 .app-shell[data-theme="dark"] .journey-sheet {
-  background: #1c1c1e;
-  box-shadow: 0 -8px 36px rgba(0, 0, 0, 0.7);
+  background: #111827;
+  box-shadow: 0 -8px 36px rgba(0, 0, 0, 0.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .journey-sheet.mode-expanded {
-  max-height: 80vh;
+  max-height: 82vh;
 }
 
 .journey-sheet.mode-peek {
@@ -855,7 +892,7 @@ html, body, #root {
 }
 
 .app-shell[data-theme="dark"] .sheet-drag-handle-bar {
-  background: #1c1c1e;
+  background: #111827;
 }
 
 .sheet-drag-handle {
@@ -873,14 +910,22 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #2c2c2e;
+  background: #f8fafc;
+}
+
+.app-shell[data-theme="dark"] .journey-sheet-header {
+  background: #1f2937;
 }
 
 .journey-sheet-title {
   font-size: 16px;
   font-weight: 700;
+  color: #0f172a;
+}
+
+.app-shell[data-theme="dark"] .journey-sheet-title {
   color: #ffffff;
 }
 
@@ -901,13 +946,23 @@ html, body, #root {
 }
 
 .journey-card {
-  background: #2c2c2e;
-  border-radius: 14px;
+  background: #f8fafc;
+  border-radius: 16px;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid #e2e8f0;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.journey-card:hover {
+  border-color: #6366f1;
+}
+
+.app-shell[data-theme="dark"] .journey-card {
+  background: #1f2937;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .journey-card-header {
@@ -919,19 +974,19 @@ html, body, #root {
 .journey-route-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: #059669;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: #4f46e5;
   color: #fff;
   font-weight: 700;
   font-size: 13px;
 }
 
 .journey-time {
-  font-size: 14px;
-  color: #4ade80;
-  font-weight: 600;
+  font-size: 13px;
+  color: #10b981;
+  font-weight: 700;
 }
 
 .journey-leg-info {
@@ -939,7 +994,11 @@ html, body, #root {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  color: #475569;
+}
+
+.app-shell[data-theme="dark"] .journey-leg-info {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 /* ─── Theme Toggle Button ────────────────────────────────────────────────── */
@@ -948,6 +1007,19 @@ html, body, #root {
   top: 16px;
   right: 16px;
   z-index: 1100;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(12px);
+  color: #fbbf24;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
   display: grid;
   place-items: center;
   width: 42px;

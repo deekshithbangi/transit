@@ -25,7 +25,6 @@ type JourneyOption = {
   leg1Route?: string
   leg2Route?: string
   isMetro?: boolean
-  walkDistance?: number
   pathPoints?: LatLng[]
   intermediateStops?: string[]
   fare?: number
@@ -71,8 +70,8 @@ function getRouteBadgesForStop(stopName: string): string[] {
   if (name.includes('uppal')) return ['219', '300', '18', '229']
   if (name.includes('secunderabad')) return ['10', '18', '219', '47A', '1Z']
   if (name.includes('koti') || name.includes('cbs')) return ['1', '2', '18', '218']
-  if (name.includes('ameerpet')) return ['47A', '218', '113M', 'Metro Red']
-  if (name.includes('hitech') || name.includes('raidurg')) return ['10H', '47H', '225', 'Metro Blue']
+  if (name.includes('ameerpet')) return ['47A', '218', '113M']
+  if (name.includes('hitech') || name.includes('raidurg')) return ['10H', '47H', '225']
   if (name.includes('charminar') || name.includes('falaknuma')) return ['8A', '9X', '102']
   if (name.includes('lingampally') || name.includes('bhel')) return ['216', '218', '219']
   if (name.includes('mehdipatnam')) return ['113M', '216', '5K']
@@ -369,6 +368,28 @@ function AppInner() {
   // Google Places
   const { search: searchPlaces, ready: placesReady } = usePlacesAutocomplete()
 
+  // Helper for pushing browser history state
+  const pushNavState = useCallback((name: string) => {
+    try { window.history.pushState({ page: name }, '') } catch {}
+  }, [])
+
+  // ── Browser back swipe & hardware back button handling ──
+  useEffect(() => {
+    const handlePopState = () => {
+      if (selectedJourney) {
+        setSelectedJourney(null)
+      } else if (showJourneySheet) {
+        setShowJourneySheet(false)
+      } else if (showSearch) {
+        setShowSearch(false)
+      } else if (pickOnMap) {
+        setPickOnMap(false)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [selectedJourney, showJourneySheet, showSearch, pickOnMap])
+
   // ── GPS watch ──
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -462,6 +483,7 @@ function AppInner() {
     setSelectedJourney(null)
     setSheetMode('expanded')
     setIsSearchingJourneys(true)
+    pushNavState('journey-results')
 
     try {
       let fStop = startStopObj
@@ -499,9 +521,8 @@ function AppInner() {
         minutesUntilDeparture: j.minutesUntilDeparture ?? 6,
         fromStopName: j.fromStopName || fName,
         toStopName: j.toStopName || tName,
-        walkDistance: 180,
-        fare: 39,
-        totalMinutes: 58,
+        fare: j.fare ?? undefined,
+        totalMinutes: j.totalMinutes ?? undefined,
         intermediateStops: getIntermediateStops(fName, tName),
         pathPoints: [
           { lat: fLat, lng: fLon },
@@ -523,9 +544,6 @@ function AppInner() {
           minutesUntilDeparture: 6,
           fromStopName: fName,
           toStopName: tName,
-          walkDistance: 220,
-          fare: 39,
-          totalMinutes: 58,
           intermediateStops: stopsList,
           pathPoints: [
             { lat: fLat, lng: fLon },
@@ -545,9 +563,6 @@ function AppInner() {
           transferStopName: 'Koti Bus Stand',
           leg1Route: fBadges[0] || '18',
           leg2Route: tBadges[0] || '218',
-          walkDistance: 150,
-          fare: 45,
-          totalMinutes: 65,
           intermediateStops: stopsList,
           pathPoints: [
             { lat: fLat, lng: fLon },
@@ -556,24 +571,24 @@ function AppInner() {
           ]
         })
 
-        parsedJourneys.push({
-          id: 'metro-1',
-          routeShortName: 'Metro Red Line',
-          departureTime: 'In 4 min',
-          minutesUntilDeparture: 4,
-          fromStopName: `${fName} Metro Station`,
-          toStopName: `${tName} Metro Station`,
-          isMetro: true,
-          walkDistance: 310,
-          fare: 50,
-          totalMinutes: 35,
-          intermediateStops: stopsList,
-          pathPoints: [
-            { lat: fLat, lng: fLon },
-            { lat: fLat + (tLat - fLat) * 0.6, lng: fLon + (tLon - fLon) * 0.6 },
-            { lat: tLat, lng: tLon }
-          ]
-        })
+        // Include Metro option only if stop names specifically suggest metro connectivity
+        if (fName.toLowerCase().includes('metro') || tName.toLowerCase().includes('metro') || fName.toLowerCase().includes('ameerpet') || tName.toLowerCase().includes('ameerpet')) {
+          parsedJourneys.push({
+            id: 'metro-1',
+            routeShortName: 'Metro Red Line',
+            departureTime: 'In 4 min',
+            minutesUntilDeparture: 4,
+            fromStopName: `${fName} Metro Station`,
+            toStopName: `${tName} Metro Station`,
+            isMetro: true,
+            intermediateStops: stopsList,
+            pathPoints: [
+              { lat: fLat, lng: fLon },
+              { lat: fLat + (tLat - fLat) * 0.6, lng: fLon + (tLon - fLon) * 0.6 },
+              { lat: tLat, lng: tLon }
+            ]
+          })
+        }
       }
 
       setJourneys(parsedJourneys)
@@ -582,7 +597,7 @@ function AppInner() {
     } finally {
       setIsSearchingJourneys(false)
     }
-  }, [userPos])
+  }, [userPos, pushNavState])
 
   // ── Actions ──
   const toggleTheme = useCallback(() => {
@@ -598,7 +613,8 @@ function AppInner() {
     setPickOnMap(false)
     setShowJourneySheet(false)
     setSelectedJourney(null)
-  }, [])
+    pushNavState('search')
+  }, [pushNavState])
 
   const closeSearch = useCallback(() => {
     setShowSearch(false)
@@ -613,7 +629,8 @@ function AppInner() {
     setPickOnMap(true)
     setShowSearch(false)
     setPickCenter(userPos ?? HYDERABAD)
-  }, [userPos])
+    pushNavState('pick-on-map')
+  }, [userPos, pushNavState])
 
   const confirmPickOnMap = useCallback(() => {
     if (!pickCenter) return
@@ -676,8 +693,8 @@ function AppInner() {
       ? displayName(result.stop.stopName)
       : result.place.name
     const subtitle = result.type === 'stop'
-      ? result.stop.stopId
-      : result.place.subtitle
+      ? 'Bus Station'
+      : (result.place.subtitle || 'Google Place')
 
     let sName = fromText || 'Current location'
     let dName = toText
@@ -758,17 +775,25 @@ function AppInner() {
   const transitPath: LatLng[] = selectedJourney?.pathPoints ?? [boardPt, alightPt]
   const walkLeg2Path: LatLng[] = [alightPt, destPt]
 
+  // Check if both origin and destination are bus stops (don't show walk/auto leg cards if both are bus stops)
+  const isDirectBusStopPair = Boolean(
+    fromText !== 'Current location' &&
+    (fromStop || fromText.toLowerCase().includes('stop') || fromText.toLowerCase().includes('stand') || fromText.toLowerCase().includes('uppal') || fromText.toLowerCase().includes('secunderabad') || fromText.toLowerCase().includes('koti')) &&
+    (toStop || toText.toLowerCase().includes('stop') || toText.toLowerCase().includes('stand') || toText.toLowerCase().includes('uppal') || toText.toLowerCase().includes('secunderabad') || toText.toLowerCase().includes('koti'))
+  )
+
   return (
     <div className="app-shell" data-theme={theme}>
-      {/* ── Floating Top Left Back Button when Route Selected ── */}
+      {/* ── Floating Top Left Sleek Back Button Pill when Route Selected ── */}
       {selectedJourney && (
         <button
-          className="theme-toggle-btn"
-          style={{ left: 16, right: 'auto', background: '#ffffff', color: '#0f172a', border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
+          className="back-btn-pill"
           onClick={() => setSelectedJourney(null)}
           aria-label="Back to all routes"
         >
-          ←
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 22, height: 22 }}>
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
         </button>
       )}
 
@@ -815,18 +840,20 @@ function AppInner() {
         {/* Selected Route Visualization (Attachment 3) */}
         {selectedJourney && (
           <>
-            {/* Walking Leg 1 Dotted Line */}
-            <RoutePolyline path={walkLeg1Path} color="#64748b" isDashed={true} />
+            {!isDirectBusStopPair && (
+              <RoutePolyline path={walkLeg1Path} color="#64748b" isDashed={true} />
+            )}
 
             {/* Transit Leg Solid Line */}
-            <RoutePolyline path={transitPath} color={selectedJourney.isMetro ? '#2563eb' : '#000000'} fitMap={true} />
+            <RoutePolyline path={transitPath} color={selectedJourney.isMetro ? '#2563eb' : '#4f46e5'} fitMap={true} />
 
-            {/* Walking Leg 2 Dotted Line */}
-            <RoutePolyline path={walkLeg2Path} color="#64748b" isDashed={true} />
+            {!isDirectBusStopPair && (
+              <RoutePolyline path={walkLeg2Path} color="#64748b" isDashed={true} />
+            )}
 
             {/* Start Node Badge at Boarding Stop */}
             <AdvancedMarker position={boardPt}>
-              <div style={{ background: '#000000', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
+              <div style={{ background: '#4f46e5', color: '#fff', padding: '5px 12px', borderRadius: 10, fontSize: 11, fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
                 Start: {selectedJourney.fromStopName}
               </div>
             </AdvancedMarker>
@@ -838,14 +865,14 @@ function AppInner() {
               const lng = boardPt.lng + (alightPt.lng - boardPt.lng) * fraction
               return (
                 <AdvancedMarker key={idx} position={{ lat, lng }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffffff', border: '2px solid #000000', boxShadow: '0 1px 4px rgba(0,0,0,0.4)' }} />
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffffff', border: '2px solid #4f46e5', boxShadow: '0 1px 4px rgba(0,0,0,0.4)' }} />
                 </AdvancedMarker>
               )
             })}
 
             {/* End Node Badge at Destination Stop */}
             <AdvancedMarker position={alightPt}>
-              <div style={{ background: '#000000', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
+              <div style={{ background: '#10b981', color: '#fff', padding: '5px 12px', borderRadius: 10, fontSize: 11, fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
                 End: {selectedJourney.toStopName}
               </div>
             </AdvancedMarker>
@@ -853,7 +880,7 @@ function AppInner() {
         )}
       </Map>
 
-      {/* ── Pick-on-map mode (Attachment 2) ── */}
+      {/* ── Pick-on-map mode ── */}
       {pickOnMap && (
         <>
           <div className="map-pink-dot" />
@@ -1080,7 +1107,7 @@ function AppInner() {
                           </span>
                           <span className="recent-info">
                             <span className="recent-name">{r.name}</span>
-                            <span className="recent-sub">{r.subtitle}</span>
+                            <span className="recent-sub">{r.subtitle || (r.resultType === 'stop' ? 'Bus Station' : 'Google Place')}</span>
                           </span>
                           <span className="recent-more"><MoreIcon /></span>
                         </button>
@@ -1094,10 +1121,10 @@ function AppInner() {
         </div>
       )}
 
-      {/* ── Journey Results Sheet & Selected Route Detail Sheet (Matching Attachments 1 & 2) ── */}
+      {/* ── Journey Results Sheet & Selected Route Detail Sheet ── */}
       {showJourneySheet && (
         <div className={`journey-sheet mode-${sheetMode}`}>
-          {/* Drag Handle Bar for smooth drag / toggle betweenPeek and Expanded view */}
+          {/* Drag Handle Bar for smooth drag / toggle between Peek and Expanded view */}
           <div className="sheet-drag-handle-bar" onClick={() => setSheetMode(prev => prev === 'peek' ? 'expanded' : 'peek')}>
             <div className="sheet-drag-handle" />
           </div>
@@ -1105,39 +1132,41 @@ function AppInner() {
           <div className="journey-sheet-header">
             <div>
               <div className="journey-sheet-title" style={{ fontSize: 22, fontWeight: 800 }}>
-                {selectedJourney ? `${selectedJourney.totalMinutes || 58} min` : 'Recommended Routes'}
+                {selectedJourney ? (selectedJourney.totalMinutes ? `${selectedJourney.totalMinutes} min` : 'Route Path') : 'Recommended Routes'}
               </div>
             </div>
-            {selectedJourney && (
+            {selectedJourney && selectedJourney.fare != null && (
               <div style={{ fontSize: 20, fontWeight: 800 }}>
-                ₹{selectedJourney.fare || 39}
+                ₹{selectedJourney.fare}
               </div>
             )}
           </div>
 
           <div className="journey-sheet-body">
             {selectedJourney ? (
-              /* Step-by-Step Route Breakdown View matching Attachments 1 & 2 */
+              /* Step-by-Step Route Breakdown View */
               <div className="timeline-container">
                 <div className="timeline-line" />
 
-                {/* Step 1: Walk to Boarding Station */}
-                <div className="timeline-step">
-                  <div className="timeline-node-icon">
-                    <img src={walkIcon} alt="Walk" style={{ width: 22, height: 22 }} />
-                  </div>
-                  <div className="timeline-step-label">Walk</div>
-                  <div className="detail-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
-                      <span>To</span>
-                      <span>8 min</span>
+                {/* Step 1: Walk to Boarding Station (Only if start is GPS / non-bus stop) */}
+                {!isDirectBusStopPair && (
+                  <div className="timeline-step">
+                    <div className="timeline-node-icon">
+                      <img src={walkIcon} alt="Walk" style={{ width: 22, height: 22 }} />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontWeight: 700, fontSize: 14 }}>
-                      <img src={busStopIcon} alt="" style={{ width: 22, height: 22 }} />
-                      <span>{selectedJourney.fromStopName}</span>
+                    <div className="timeline-step-label">Walk</div>
+                    <div className="detail-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+                        <span>To</span>
+                        <span>8 min</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontWeight: 700, fontSize: 14 }}>
+                        <img src={busStopIcon} alt="" style={{ width: 22, height: 22 }} />
+                        <span>{selectedJourney.fromStopName}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Step 2: Board at Bus Station */}
                 <div className="timeline-step">
@@ -1148,7 +1177,7 @@ function AppInner() {
                   <div className="detail-card">
                     <div className="card-badge-pill">
                       <img src={busIcon} alt="" style={{ width: 18, height: 18 }} />
-                      <span>Bus {selectedJourney.routeShortName}</span>
+                      <span>{selectedJourney.routeShortName}</span>
                     </div>
 
                     <div style={{ fontSize: 13, color: '#0284c7', fontWeight: 700, marginTop: 4 }}>
@@ -1167,9 +1196,11 @@ function AppInner() {
                       <span style={{ color: '#d97706' }}>
                         {(selectedJourney.intermediateStops?.length || 8) + 2} Stops {showStopsAccordion ? '▲' : '▼'}
                       </span>
-                      <span style={{ color: '#64748b', fontWeight: 600, fontSize: 12 }}>
-                        ₹{selectedJourney.fare || 15} • 21 min
-                      </span>
+                      {selectedJourney.fare != null && (
+                        <span style={{ color: '#64748b', fontWeight: 600, fontSize: 12 }}>
+                          ₹{selectedJourney.fare}
+                        </span>
+                      )}
                     </button>
 
                     {showStopsAccordion && (
@@ -1185,7 +1216,7 @@ function AppInner() {
                           </div>
                         ))}
                         <div className="stop-tree-item" style={{ fontWeight: 700 }}>
-                          <span className="stop-circle-dot" style={{ background: '#000000' }} />
+                          <span className="stop-circle-dot" style={{ background: '#4f46e5' }} />
                           <span>{selectedJourney.toStopName}</span>
                         </div>
                       </div>
@@ -1197,39 +1228,42 @@ function AppInner() {
                   </div>
                 </div>
 
-                {/* Step 3: Destination Arrival */}
-                <div className="timeline-step">
-                  <div className="timeline-node-icon">
-                    <img src={pinIcon} alt="Pin" style={{ width: 22, height: 22 }} />
+                {/* Step 3: Destination Arrival (Only if destination is Google Place / non-bus stop) */}
+                {!isDirectBusStopPair && (
+                  <div className="timeline-step">
+                    <div className="timeline-node-icon">
+                      <img src={pinIcon} alt="Pin" style={{ width: 22, height: 22 }} />
+                    </div>
+                    <div className="timeline-step-label">Destination</div>
+                    <div className="detail-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+                        <span>To</span>
+                        <span>8 min</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontWeight: 700, fontSize: 14 }}>
+                        <img src={pinIcon} alt="" style={{ width: 22, height: 22 }} />
+                        <span>{toText || selectedJourney.toStopName}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                        Your destination
+                      </div>
+                    </div>
                   </div>
-                  <div className="timeline-step-label">Auto / Walk</div>
-                  <div className="detail-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
-                      <span>To</span>
-                      <span>₹24 • 8 min</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontWeight: 700, fontSize: 14 }}>
-                      <img src={pinIcon} alt="" style={{ width: 22, height: 22 }} />
-                      <span>{toText || selectedJourney.toStopName}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
-                      Your destination
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             ) : isSearchingJourneys ? (
               <div className="sugg-loading-full">
                 <span className="sugg-spinner" />
-                <span>Finding upcoming bus & metro options…</span>
+                <span>Finding upcoming bus options…</span>
               </div>
             ) : journeys.length > 0 ? (
               journeys.map((j) => (
                 <div key={j.id} className="journey-card" onClick={() => setSelectedJourney(j)} role="button" tabIndex={0}>
                   <div className="journey-card-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span className="journey-route-tag">
-                        {j.isMetro ? '🚇' : '🚌'} Bus {j.routeShortName}
+                        <img src={busIcon} alt="Bus" style={{ width: 18, height: 18, filter: 'brightness(0) invert(1)' }} />
+                        <span>Route {j.routeShortName}</span>
                       </span>
                       {j.isTransfer && (
                         <span className="route-chip-badge express-chip">
@@ -1246,19 +1280,14 @@ function AppInner() {
                     </span>
                   </div>
 
-                  {j.walkDistance && (
-                    <div className="journey-leg-info">
-                      <span>🚶 Walk {j.walkDistance}m to {j.fromStopName}</span>
-                    </div>
-                  )}
-
                   <div className="journey-leg-info">
-                    <span>{j.isMetro ? '🚇' : '🚌'} {j.fromStopName} → {j.toStopName}</span>
+                    <img src={busStopIcon} alt="" style={{ width: 16, height: 16 }} />
+                    <span>{j.fromStopName} → {j.toStopName}</span>
                   </div>
 
                   {j.isTransfer && j.transferStopName && (
                     <div className="journey-leg-info" style={{ color: '#f59e0b' }}>
-                      <span>🔄 Change bus at {j.transferStopName} (Leg 2: Bus {j.leg2Route})</span>
+                      <span>🔄 Change bus at {j.transferStopName}</span>
                     </div>
                   )}
                 </div>
