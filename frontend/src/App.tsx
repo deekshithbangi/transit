@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { APIProvider, Map, AdvancedMarker, useMapsLibrary, useMap } from '@vis.gl/react-google-maps'
 import './App.css'
+import busIcon from './assets/bus-icon.png'
 import busStopIcon from './assets/bus-stop-icon.png'
-import locationPinIcon from './assets/location-pin-icon.png'
+import walkIcon from './assets/walk-icon.png'
+import pinIcon from './assets/pin-icon.png'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LatLng = { lat: number; lng: number }
@@ -279,7 +281,7 @@ function RoutePolyline({
     if (fitMap) {
       const bounds = new google.maps.LatLngBounds()
       path.forEach(pt => bounds.extend(pt))
-      map.fitBounds(bounds, { top: 100, bottom: 320, left: 40, right: 40 })
+      map.fitBounds(bounds, { top: 90, bottom: 200, left: 30, right: 30 })
     }
 
     return () => line.setMap(null)
@@ -356,6 +358,7 @@ function AppInner() {
   const [journeys, setJourneys]           = useState<JourneyOption[]>([])
   const [selectedJourney, setSelectedJourney]   = useState<JourneyOption | null>(null)
   const [showStopsAccordion, setShowStopsAccordion] = useState(true)
+  const [sheetMode, setSheetMode]         = useState<'expanded' | 'peek'>('expanded')
 
   const toInputRef     = useRef<HTMLInputElement>(null)
   const fromInputRef   = useRef<HTMLInputElement>(null)
@@ -457,6 +460,7 @@ function AppInner() {
     setShowSearch(false)
     setShowJourneySheet(true)
     setSelectedJourney(null)
+    setSheetMode('expanded')
     setIsSearchingJourneys(true)
 
     try {
@@ -496,8 +500,8 @@ function AppInner() {
         fromStopName: j.fromStopName || fName,
         toStopName: j.toStopName || tName,
         walkDistance: 180,
-        fare: 35,
-        totalMinutes: 42,
+        fare: 39,
+        totalMinutes: 58,
         intermediateStops: getIntermediateStops(fName, tName),
         pathPoints: [
           { lat: fLat, lng: fLon },
@@ -760,7 +764,7 @@ function AppInner() {
       {selectedJourney && (
         <button
           className="theme-toggle-btn"
-          style={{ left: 16, right: 'auto' }}
+          style={{ left: 16, right: 'auto', background: '#ffffff', color: '#0f172a', border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
           onClick={() => setSelectedJourney(null)}
           aria-label="Back to all routes"
         >
@@ -768,10 +772,12 @@ function AppInner() {
         </button>
       )}
 
-      {/* ── Theme Toggle Button ── */}
-      <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
-        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-      </button>
+      {/* ── Theme Toggle Button (Hidden when route is selected to keep map UI ultra clean) ── */}
+      {!selectedJourney && (
+        <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        </button>
+      )}
 
       {/* ── Location error banner ── */}
       {locError && !showSearch && (
@@ -820,7 +826,7 @@ function AppInner() {
 
             {/* Start Node Badge at Boarding Stop */}
             <AdvancedMarker position={boardPt}>
-              <div style={{ background: '#d97706', color: '#fff', padding: '4px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
+              <div style={{ background: '#000000', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
                 Start: {selectedJourney.fromStopName}
               </div>
             </AdvancedMarker>
@@ -839,7 +845,7 @@ function AppInner() {
 
             {/* End Node Badge at Destination Stop */}
             <AdvancedMarker position={alightPt}>
-              <div style={{ background: '#000000', color: '#fff', padding: '4px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
+              <div style={{ background: '#000000', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
                 End: {selectedJourney.toStopName}
               </div>
             </AdvancedMarker>
@@ -1006,7 +1012,7 @@ function AppInner() {
                         onClick={() => chooseResult(r)}
                       >
                         <span className="sugg-icon">
-                          <img src={locationPinIcon} alt="Place" className="sugg-type-icon" />
+                          <img src={pinIcon} alt="Place" className="sugg-type-icon" />
                         </span>
                         <span className="sugg-info">
                           <span className="sugg-name">{r.place.name}</span>
@@ -1022,7 +1028,7 @@ function AppInner() {
                 <div className="quick-actions">
                   <button className="quick-action-card" onClick={startPickOnMap}>
                     <span className="qa-icon">
-                      <img src={locationPinIcon} alt="" className="qa-type-icon" />
+                      <img src={pinIcon} alt="" className="qa-type-icon" />
                     </span>
                     <span className="qa-label">Choose on map</span>
                     <ChevronRightIcon />
@@ -1067,7 +1073,7 @@ function AppInner() {
                         <button key={`${r.name}-${i}`} className="recent-item" onClick={() => selectRecent(r)}>
                           <span className="recent-icon">
                             <img
-                              src={r.resultType === 'stop' ? busStopIcon : locationPinIcon}
+                              src={r.resultType === 'stop' ? busStopIcon : pinIcon}
                               alt=""
                               className="recent-type-icon"
                             />
@@ -1090,27 +1096,23 @@ function AppInner() {
 
       {/* ── Journey Results Sheet & Selected Route Detail Sheet (Matching Attachments 1 & 2) ── */}
       {showJourneySheet && (
-        <div className="journey-sheet">
+        <div className={`journey-sheet mode-${sheetMode}`}>
+          {/* Drag Handle Bar for smooth drag / toggle betweenPeek and Expanded view */}
+          <div className="sheet-drag-handle-bar" onClick={() => setSheetMode(prev => prev === 'peek' ? 'expanded' : 'peek')}>
+            <div className="sheet-drag-handle" />
+          </div>
+
           <div className="journey-sheet-header">
             <div>
-              <div className="journey-sheet-title" style={{ fontSize: 20, fontWeight: 800 }}>
+              <div className="journey-sheet-title" style={{ fontSize: 22, fontWeight: 800 }}>
                 {selectedJourney ? `${selectedJourney.totalMinutes || 58} min` : 'Recommended Routes'}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {selectedJourney && (
-                <div style={{ fontSize: 18, fontWeight: 800 }}>₹{selectedJourney.fare || 39}</div>
-              )}
-              <button className="journey-close-btn" onClick={() => {
-                if (selectedJourney) {
-                  setSelectedJourney(null)
-                } else {
-                  setShowJourneySheet(false)
-                }
-              }}>
-                {selectedJourney ? '←' : '✕'}
-              </button>
-            </div>
+            {selectedJourney && (
+              <div style={{ fontSize: 20, fontWeight: 800 }}>
+                ₹{selectedJourney.fare || 39}
+              </div>
+            )}
           </div>
 
           <div className="journey-sheet-body">
@@ -1121,7 +1123,9 @@ function AppInner() {
 
                 {/* Step 1: Walk to Boarding Station */}
                 <div className="timeline-step">
-                  <div className="timeline-node-icon">🚶</div>
+                  <div className="timeline-node-icon">
+                    <img src={walkIcon} alt="Walk" style={{ width: 22, height: 22 }} />
+                  </div>
                   <div className="timeline-step-label">Walk</div>
                   <div className="detail-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
@@ -1137,16 +1141,18 @@ function AppInner() {
 
                 {/* Step 2: Board at Bus Station */}
                 <div className="timeline-step">
-                  <div className="timeline-node-icon">🚌</div>
+                  <div className="timeline-node-icon">
+                    <img src={busIcon} alt="Bus" style={{ width: 22, height: 22 }} />
+                  </div>
                   <div className="timeline-step-label">Board at {selectedJourney.fromStopName}</div>
                   <div className="detail-card">
                     <div className="card-badge-pill">
-                      <span>🚌 Bus {selectedJourney.routeShortName}</span>
-                      <span className="badge-corridor">Corridor</span>
+                      <img src={busIcon} alt="" style={{ width: 18, height: 18 }} />
+                      <span>Bus {selectedJourney.routeShortName}</span>
                     </div>
 
                     <div style={{ fontSize: 13, color: '#0284c7', fontWeight: 700, marginTop: 4 }}>
-                      Arriving in {selectedJourney.minutesUntilDeparture || 6} min
+                      Scheduled in {selectedJourney.minutesUntilDeparture || 6} min
                     </div>
 
                     <div style={{ fontWeight: 700, fontSize: 14, marginTop: 6 }}>
@@ -1193,7 +1199,9 @@ function AppInner() {
 
                 {/* Step 3: Destination Arrival */}
                 <div className="timeline-step">
-                  <div className="timeline-node-icon">🚏</div>
+                  <div className="timeline-node-icon">
+                    <img src={pinIcon} alt="Pin" style={{ width: 22, height: 22 }} />
+                  </div>
                   <div className="timeline-step-label">Auto / Walk</div>
                   <div className="detail-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
@@ -1201,7 +1209,7 @@ function AppInner() {
                       <span>₹24 • 8 min</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontWeight: 700, fontSize: 14 }}>
-                      <img src={locationPinIcon} alt="" style={{ width: 22, height: 22 }} />
+                      <img src={pinIcon} alt="" style={{ width: 22, height: 22 }} />
                       <span>{toText || selectedJourney.toStopName}</span>
                     </div>
                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
