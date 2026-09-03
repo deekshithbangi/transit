@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { APIProvider, Map, AdvancedMarker, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { APIProvider, Map, AdvancedMarker, useMapsLibrary, useMap } from '@vis.gl/react-google-maps'
 import './App.css'
 import busStopIcon from './assets/bus-stop-icon.png'
 import locationPinIcon from './assets/location-pin-icon.png'
@@ -24,6 +24,7 @@ type JourneyOption = {
   leg2Route?: string
   isMetro?: boolean
   walkDistance?: number
+  pathPoints?: LatLng[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -71,7 +72,6 @@ function getRouteBadgesForStop(stopName: string): string[] {
   if (name.includes('lingampally') || name.includes('bhel')) return ['216', '218', '219']
   if (name.includes('mehdipatnam')) return ['113M', '216', '5K']
   
-  // Deterministic badges based on stop name hash
   const hash = stopName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
   const b1 = (hash % 180 + 10).toString()
   const b2 = ((hash * 7) % 220 + 12).toString()
@@ -176,6 +176,62 @@ function MoreIcon() {
     </svg>
   )
 }
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon-svg">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M18.99 4.93l-1.41 1.41"/>
+    </svg>
+  )
+}
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon-svg">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+    </svg>
+  )
+}
+
+// ─── Polyline component ───────────────────────────────────────────────────────
+function RoutePolyline({
+  path,
+  color = '#2563eb',
+  isDashed = false,
+  fitMap = false
+}: {
+  path: LatLng[]
+  color?: string
+  isDashed?: boolean
+  fitMap?: boolean
+}) {
+  const map = useMap()
+  useEffect(() => {
+    if (!map || path.length < 2) return
+
+    const line = new google.maps.Polyline({
+      path,
+      geodesic: true,
+      strokeColor: color,
+      strokeOpacity: isDashed ? 0 : 0.9,
+      strokeWeight: 6,
+      icons: isDashed ? [{
+        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+        offset: '0',
+        repeat: '12px'
+      }] : undefined,
+    })
+    line.setMap(map)
+
+    if (fitMap) {
+      const bounds = new google.maps.LatLngBounds()
+      path.forEach(pt => bounds.extend(pt))
+      map.fitBounds(bounds, { top: 80, bottom: 320, left: 40, right: 40 })
+    }
+
+    return () => line.setMap(null)
+  }, [map, path, color, isDashed, fitMap])
+
+  return null
+}
 
 // ─── Google Places hook ───────────────────────────────────────────────────────
 function usePlacesAutocomplete() {
@@ -212,8 +268,11 @@ function usePlacesAutocomplete() {
   return { search, ready: !!places }
 }
 
-// ─── Inner App (inside APIProvider) ───────────────────────────────────────────
+// ─── Inner App ────────────────────────────────────────────────────────────────
 function AppInner() {
+  // Theme state ('dark' | 'light')
+  const [theme, setTheme]               = useState<'dark' | 'light'>('dark')
+
   // Location state
   const [userPos, setUserPos]           = useState<LatLng | null>(null)
   const [accuracy, setAccuracy]         = useState(50)
@@ -237,10 +296,11 @@ function AppInner() {
   const [pickOnMap, setPickOnMap]       = useState(false)
   const [pickCenter, setPickCenter]    = useState<LatLng | null>(null)
 
-  // Journey results state
-  const [showJourneySheet, setShowJourneySheet] = useState(false)
+  // Journey & Route state
+  const [showJourneySheet, setShowJourneySheet]   = useState(false)
   const [isSearchingJourneys, setIsSearchingJourneys] = useState(false)
-  const [journeys, setJourneys]         = useState<JourneyOption[]>([])
+  const [journeys, setJourneys]           = useState<JourneyOption[]>([])
+  const [selectedJourney, setSelectedJourney]   = useState<JourneyOption | null>(null)
 
   const toInputRef     = useRef<HTMLInputElement>(null)
   const fromInputRef   = useRef<HTMLInputElement>(null)
@@ -342,19 +402,18 @@ function AppInner() {
   const triggerJourneySearch = useCallback(async (startName: string, destName: string, startStopObj?: Stop | null, destStopObj?: Stop | null) => {
     setShowSearch(false)
     setShowJourneySheet(true)
+    setSelectedJourney(null)
     setIsSearchingJourneys(true)
 
     try {
       let fStop = startStopObj
       let tStop = destStopObj
 
-      // If start stop not explicitly resolved, search backend for closest stop
       if (!fStop) {
         const found = await searchStopsByName(startName === 'Current location' ? 'Uppal' : startName, 3)
         if (found.length > 0) fStop = found[0]
       }
 
-      // If dest stop not explicitly resolved, search backend for closest stop
       if (!tStop) {
         const found = await searchStopsByName(destName, 3)
         if (found.length > 0) tStop = found[0]
@@ -364,6 +423,11 @@ function AppInner() {
       const tId = tStop?.stopId || 'QeBJG7EM'
       const fName = fStop?.stopName || startName || 'Start Stop'
       const tName = tStop?.stopName || destName || 'Destination Stop'
+
+      const fLat = fStop?.stopLat ?? (userPos?.lat ?? 17.3999)
+      const fLon = fStop?.stopLon ?? (userPos?.lng ?? 78.5602)
+      const tLat = tStop?.stopLat ?? 17.4429
+      const tLon = tStop?.stopLon ?? 78.5037
 
       // Call API
       const apiPayload = await fetchJson<{ data?: any[] }>(
@@ -379,9 +443,13 @@ function AppInner() {
         fromStopName: j.fromStopName || fName,
         toStopName: j.toStopName || tName,
         walkDistance: 180,
+        pathPoints: [
+          { lat: fLat, lng: fLon },
+          { lat: fLat + (tLat - fLat) * 0.5, lng: fLon + (tLon - fLon) * 0.5 },
+          { lat: tLat, lng: tLon }
+        ]
       }))
 
-      // Fallback: If API returns empty (e.g. at night or unmatched pair), provide realistic bus/metro routes
       if (parsedJourneys.length === 0) {
         const fBadges = getRouteBadgesForStop(fName)
         const tBadges = getRouteBadgesForStop(tName)
@@ -395,6 +463,11 @@ function AppInner() {
           fromStopName: fName,
           toStopName: tName,
           walkDistance: 220,
+          pathPoints: [
+            { lat: fLat, lng: fLon },
+            { lat: fLat + (tLat - fLat) * 0.4, lng: fLon + (tLon - fLon) * 0.4 },
+            { lat: tLat, lng: tLon }
+          ]
         })
 
         parsedJourneys.push({
@@ -409,6 +482,11 @@ function AppInner() {
           leg1Route: fBadges[0] || '18',
           leg2Route: tBadges[0] || '218',
           walkDistance: 150,
+          pathPoints: [
+            { lat: fLat, lng: fLon },
+            { lat: 17.385, lng: 78.486 }, // Koti transfer point
+            { lat: tLat, lng: tLon }
+          ]
         })
 
         parsedJourneys.push({
@@ -420,6 +498,11 @@ function AppInner() {
           toStopName: `${tName} Metro Station`,
           isMetro: true,
           walkDistance: 310,
+          pathPoints: [
+            { lat: fLat, lng: fLon },
+            { lat: fLat + (tLat - fLat) * 0.6, lng: fLon + (tLon - fLon) * 0.6 },
+            { lat: tLat, lng: tLon }
+          ]
         })
       }
 
@@ -429,9 +512,13 @@ function AppInner() {
     } finally {
       setIsSearchingJourneys(false)
     }
-  }, [])
+  }, [userPos])
 
   // ── Actions ──
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
+  }, [])
+
   const openSearch = useCallback(() => {
     setShowSearch(true)
     setDualMode(false)
@@ -440,6 +527,7 @@ function AppInner() {
     setResults([])
     setPickOnMap(false)
     setShowJourneySheet(false)
+    setSelectedJourney(null)
   }, [])
 
   const closeSearch = useCallback(() => {
@@ -451,7 +539,6 @@ function AppInner() {
     setPickOnMap(false)
   }, [])
 
-  // ── Choose on map ──
   const startPickOnMap = useCallback(() => {
     setPickOnMap(true)
     setShowSearch(false)
@@ -479,7 +566,6 @@ function AppInner() {
 
     setPickOnMap(false)
     
-    // Trigger journey planning if destination is set
     if (dName) {
       triggerJourneySearch(sName, dName, fromStop, toStop)
     } else {
@@ -491,24 +577,6 @@ function AppInner() {
     setPickOnMap(false)
     setShowSearch(true)
   }, [])
-
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    const t = e.touches[0]
-    if (t) touchStartRef.current = { x: t.clientX, y: t.clientY }
-  }, [])
-
-  const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    const start = touchStartRef.current
-    touchStartRef.current = null
-    if (!start) return
-    const t = e.changedTouches[0]
-    if (!t) return
-    const dx = t.clientX - start.x
-    const dy = t.clientY - start.y
-    if (dx > 50 && Math.abs(dy) < 50) {
-      closeSearch()
-    }
-  }, [closeSearch])
 
   const toggleDualMode = useCallback(() => {
     setDualMode(prev => {
@@ -570,7 +638,6 @@ function AppInner() {
     saveRecent(entry)
     setRecents(loadRecents())
 
-    // Auto plan journey when destination selected!
     if (dName) {
       triggerJourneySearch(sName, dName, newFStop, newTStop)
     }
@@ -612,7 +679,12 @@ function AppInner() {
   const placeResults = results.filter(r => r.type === 'place') as Extract<SearchResult, { type: 'place' }>[]
 
   return (
-    <>
+    <div className="app-shell" data-theme={theme}>
+      {/* ── Theme Toggle Button ── */}
+      <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
+        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+      </button>
+
       {/* ── Location error banner ── */}
       {locError && !showSearch && (
         <div className="loc-error-banner">
@@ -621,20 +693,16 @@ function AppInner() {
         </div>
       )}
 
-      {/* ── Google Map ── */}
+      {/* ── Google Map (Cleaned UI: No fullscreen button, controls, etc) ── */}
       <Map
         defaultCenter={center}
         defaultZoom={userPos ? 16 : 13}
         center={userPos ? center : undefined}
         zoom={userPos ? 16 : undefined}
         gestureHandling="greedy"
-        disableDefaultUI={false}
-        zoomControl={true}
-        scrollwheel={true}
-        streetViewControl={false}
-        mapTypeControl={false}
+        disableDefaultUI={true}
         mapId="transit-dark-map"
-        colorScheme="DARK"
+        colorScheme={theme === 'dark' ? 'DARK' : 'LIGHT'}
         className="map-container"
         onCameraChanged={pickOnMap ? (ev) => setPickCenter({ lat: ev.detail.center.lat, lng: ev.detail.center.lng }) : undefined}
       >
@@ -649,9 +717,26 @@ function AppInner() {
             </div>
           </AdvancedMarker>
         )}
+
+        {/* Selected Route Polyline on Map */}
+        {selectedJourney?.pathPoints && (
+          <>
+            <RoutePolyline path={selectedJourney.pathPoints} color={selectedJourney.isMetro ? '#2563eb' : '#059669'} fitMap={true} />
+            <AdvancedMarker position={selectedJourney.pathPoints[0]}>
+              <div style={{ background: '#059669', color: '#fff', padding: '4px 8px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                🚏 {selectedJourney.fromStopName}
+              </div>
+            </AdvancedMarker>
+            <AdvancedMarker position={selectedJourney.pathPoints[selectedJourney.pathPoints.length - 1]}>
+              <div style={{ background: '#e11d48', color: '#fff', padding: '4px 8px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                🏁 {selectedJourney.toStopName}
+              </div>
+            </AdvancedMarker>
+          </>
+        )}
       </Map>
 
-      {/* ── Pick-on-map mode: Pink Dot + Magenta Bar (Attachment 2) ── */}
+      {/* ── Pick-on-map mode (Attachment 2) ── */}
       {pickOnMap && (
         <>
           <div className="map-pink-dot" />
@@ -690,8 +775,7 @@ function AppInner() {
 
       {/* ── Search overlay ── */}
       {showSearch && (
-        <div className="search-overlay" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          {/* Green header */}
+        <div className="search-overlay">
           <div className="search-header">
             {dualMode ? (
               <div className="search-header-dual">
@@ -756,15 +840,13 @@ function AppInner() {
             )}
           </div>
 
-          {/* Search body */}
           <div className="search-body">
             {showResults ? (
-              /* ── Categorized Search Suggestions (Attachment 1) ── */
               <div className="suggestions-list">
                 {isLoading && (
                   <div className="sugg-loading">
                     <span className="sugg-spinner" />
-                    <span>Searching stops & stations…</span>
+                    <span>Searching stops & places…</span>
                   </div>
                 )}
 
@@ -826,7 +908,6 @@ function AppInner() {
               </div>
             ) : (
               <>
-                {/* ── Quick actions ── */}
                 <div className="quick-actions">
                   <button className="quick-action-card" onClick={startPickOnMap}>
                     <span className="qa-icon">
@@ -867,7 +948,6 @@ function AppInner() {
                   )}
                 </div>
 
-                {/* ── Recent searches ── */}
                 {recents.length > 0 && (
                   <div className="recents-section">
                     <div className="search-section-header">RECENT</div>
@@ -893,48 +973,103 @@ function AppInner() {
                 )}
               </>
             )}
-
-            {/* Loading with no cached results */}
-            {hasActiveQuery && results.length === 0 && isLoading && (
-              <div className="sugg-loading-full">
-                <span className="sugg-spinner" />
-                <span>Searching stops & places…</span>
-              </div>
-            )}
-
-            {/* No results */}
-            {hasActiveQuery && results.length === 0 && !isLoading && (
-              <div className="sugg-empty">
-                <SearchIcon />
-                <p>No stops or places found for "{activeText.trim()}"</p>
-                <p className="sugg-empty-hint">Try a different spelling or shorter name</p>
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* ── Journey Results Sheet ── */}
+      {/* ── Journey Results Sheet & Selected Route Detail Sheet ── */}
       {showJourneySheet && (
         <div className="journey-sheet">
           <div className="journey-sheet-header">
             <div>
-              <div className="journey-sheet-title">Recommended Routes</div>
+              <div className="journey-sheet-title">
+                {selectedJourney ? `Route ${selectedJourney.routeShortName}` : 'Recommended Routes'}
+              </div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
                 {fromText || 'Current location'} → {toText || 'Destination'}
               </div>
             </div>
-            <button className="journey-close-btn" onClick={() => setShowJourneySheet(false)}>✕</button>
+            <button className="journey-close-btn" onClick={() => {
+              if (selectedJourney) {
+                setSelectedJourney(null)
+              } else {
+                setShowJourneySheet(false)
+              }
+            }}>
+              {selectedJourney ? '←' : '✕'}
+            </button>
           </div>
+
           <div className="journey-sheet-body">
-            {isSearchingJourneys ? (
+            {selectedJourney ? (
+              /* Step-by-Step Route Breakdown View */
+              <div className="step-timeline">
+                {/* Step 1: Walk to Boarding Stop */}
+                <div className="step-item">
+                  <div className="step-line dashed" />
+                  <div className="step-icon-badge walk">🚶</div>
+                  <div className="step-content">
+                    <div className="step-title">Walk {selectedJourney.walkDistance || 200}m (3 mins)</div>
+                    <div className="step-sub">From {fromText || 'Current location'} to {selectedJourney.fromStopName}</div>
+                  </div>
+                </div>
+
+                {/* Step 2: Board Bus / Metro */}
+                <div className="step-item">
+                  <div className="step-line" style={{ background: selectedJourney.isMetro ? '#2563eb' : '#d97706' }} />
+                  <div className={`step-icon-badge ${selectedJourney.isMetro ? 'metro' : 'bus'}`}>
+                    {selectedJourney.isMetro ? '🚇' : '🚌'}
+                  </div>
+                  <div className="step-content">
+                    <div className="step-title">
+                      Board {selectedJourney.isMetro ? 'Metro' : 'Bus'} {selectedJourney.routeShortName}
+                    </div>
+                    <div className="step-sub">At {selectedJourney.fromStopName} • Departs {selectedJourney.departureTime}</div>
+                    <div className="step-badge-tag">
+                      {selectedJourney.isTransfer ? `Ride to ${selectedJourney.transferStopName}` : `Ride 8 stops to ${selectedJourney.toStopName}`}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transfer Step if applicable */}
+                {selectedJourney.isTransfer && selectedJourney.transferStopName && (
+                  <div className="step-item">
+                    <div className="step-line" style={{ background: '#d97706' }} />
+                    <div className="step-icon-badge bus">🔄</div>
+                    <div className="step-content">
+                      <div className="step-title">Transfer at {selectedJourney.transferStopName}</div>
+                      <div className="step-sub">Switch to Bus {selectedJourney.leg2Route} • Ride 5 stops to {selectedJourney.toStopName}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Alight at Destination Stop */}
+                <div className="step-item">
+                  <div className="step-line dashed" />
+                  <div className="step-icon-badge bus">🚏</div>
+                  <div className="step-content">
+                    <div className="step-title">Alight at {selectedJourney.toStopName}</div>
+                    <div className="step-sub">Destination stop</div>
+                  </div>
+                </div>
+
+                {/* Step 4: Final Walk to Destination */}
+                <div className="step-item">
+                  <div className="step-icon-badge dest">🏁</div>
+                  <div className="step-content">
+                    <div className="step-title">Walk 150m (2 mins)</div>
+                    <div className="step-sub">Arrive at {toText || 'Destination'}</div>
+                  </div>
+                </div>
+              </div>
+            ) : isSearchingJourneys ? (
               <div className="sugg-loading-full">
                 <span className="sugg-spinner" />
                 <span>Finding upcoming bus & metro options…</span>
               </div>
             ) : journeys.length > 0 ? (
               journeys.map((j) => (
-                <div key={j.id} className="journey-card">
+                <div key={j.id} className="journey-card" onClick={() => setSelectedJourney(j)} role="button" tabIndex={0}>
                   <div className="journey-card-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className="journey-route-tag">
@@ -970,6 +1105,10 @@ function AppInner() {
                       <span>🔄 Change bus at {j.transferStopName} (Leg 2: Bus {j.leg2Route})</span>
                     </div>
                   )}
+
+                  <div style={{ fontSize: 12, color: '#38bdf8', fontWeight: 600, marginTop: 4 }}>
+                    Tap to view map route & step-by-step detail →
+                  </div>
                 </div>
               ))
             ) : (
@@ -981,7 +1120,7 @@ function AppInner() {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 

@@ -906,6 +906,236 @@ html, body, #root {
   color: rgba(255, 255, 255, 0.7);
 }
 
+/* ─── Theme Toggle Button ────────────────────────────────────────────────── */
+.theme-toggle-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(28, 28, 30, 0.85);
+  backdrop-filter: blur(12px);
+  color: #fbbf24;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.theme-toggle-btn:hover {
+  transform: scale(1.05);
+  background: rgba(44, 44, 46, 0.95);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+/* ─── Light Mode Styles ──────────────────────────────────────────────────── */
+.app-shell[data-theme="light"] {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.app-shell[data-theme="light"] .theme-toggle-btn {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #475569;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.app-shell[data-theme="light"] .search-pill {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.app-shell[data-theme="light"] .search-pill-text {
+  color: #334155;
+}
+
+.app-shell[data-theme="light"] .home-btn {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.app-shell[data-theme="light"] .search-overlay {
+  background: #f8fafc;
+}
+
+.app-shell[data-theme="light"] .search-header {
+  background: #047857;
+}
+
+.app-shell[data-theme="light"] .search-field-row {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.app-shell[data-theme="light"] .search-field-input {
+  color: #ffffff;
+}
+
+.app-shell[data-theme="light"] .search-field-input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.app-shell[data-theme="light"] .quick-action-card,
+.app-shell[data-theme="light"] .recent-item {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.app-shell[data-theme="light"] .qa-label,
+.app-shell[data-theme="light"] .recent-name,
+.app-shell[data-theme="light"] .sugg-name {
+  color: #0f172a;
+}
+
+.app-shell[data-theme="light"] .qa-sub,
+.app-shell[data-theme="light"] .recent-sub,
+.app-shell[data-theme="light"] .sugg-sub {
+  color: #64748b;
+}
+
+.app-shell[data-theme="light"] .search-section-header {
+  color: #64748b;
+}
+
+.app-shell[data-theme="light"] .journey-sheet {
+  background: #ffffff;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.app-shell[data-theme="light"] .journey-sheet-header {
+  background: #f1f5f9;
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.app-shell[data-theme="light"] .journey-sheet-title {
+  color: #0f172a;
+}
+
+.app-shell[data-theme="light"] .journey-close-btn {
+  color: #64748b;
+}
+
+.app-shell[data-theme="light"] .journey-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.app-shell[data-theme="light"] .journey-leg-info {
+  color: #475569;
+}
+
+/* ─── Step-by-Step Timeline ───────────────────────────────────────────────── */
+.step-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+  position: relative;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.step-item:last-child {
+  padding-bottom: 0;
+}
+
+.step-line {
+  position: absolute;
+  left: 17px;
+  top: 32px;
+  bottom: 0;
+  width: 3px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.app-shell[data-theme="light"] .step-line {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.step-line.dashed {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.3) 0,
+    rgba(255, 255, 255, 0.3) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.step-icon-badge {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 16px;
+  flex-shrink: 0;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.step-icon-badge.walk { background: #059669; }
+.step-icon-badge.bus { background: #d97706; }
+.step-icon-badge.metro { background: #2563eb; }
+.step-icon-badge.dest { background: #e11d48; }
+
+.step-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.app-shell[data-theme="light"] .step-title {
+  color: #0f172a;
+}
+
+.step-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.app-shell[data-theme="light"] .step-sub {
+  color: #64748b;
+}
+
+.step-badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
 /* ─── Desktop adjustments ────────────────────────────────────────────────── */
 @media (min-width: 768px) {
   .bottom-bar {
