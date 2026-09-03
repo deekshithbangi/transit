@@ -46,6 +46,19 @@ const SEARCH_DEBOUNCE_MS = 220
 const PLACE_BIAS_RADIUS_M = 60_000
 const MIN_QUERY_LEN = 2
 
+const POPULAR_HYDERABAD_STOPS: Stop[] = [
+  { stopId: 'STOP_SEC', stopName: 'Secunderabad Bus Station', stopLat: 17.4399, stopLon: 78.4983 },
+  { stopId: 'STOP_MGBS', stopName: 'MGBS Bus Station (Mahatma Gandhi)', stopLat: 17.3789, stopLon: 78.4813 },
+  { stopId: 'STOP_JBS', stopName: 'JBS Bus Station (Jubilee)', stopLat: 17.4503, stopLon: 78.4988 },
+  { stopId: 'STOP_AMEER', stopName: 'Ameerpet Metro & Bus Stop', stopLat: 17.4375, stopLon: 78.4482 },
+  { stopId: 'STOP_KOTI', stopName: 'Koti Bus Stand', stopLat: 17.3850, stopLon: 78.4867 },
+  { stopId: 'STOP_HITEC', stopName: 'Hitec City Cyber Towers', stopLat: 17.4504, stopLon: 78.3808 },
+  { stopId: 'STOP_DIL', stopName: 'Dilsukhnagar Bus Depot', stopLat: 17.3688, stopLon: 78.5247 },
+  { stopId: 'STOP_GACHI', stopName: 'Gachibowli X Roads', stopLat: 17.4401, stopLon: 78.3489 },
+  { stopId: 'STOP_KUKAT', stopName: 'Kukatpally Housing Board (KPHB)', stopLat: 17.4933, stopLon: 78.3994 },
+  { stopId: 'STOP_MEHDI', stopName: 'Mehdipatnam Bus Stop', stopLat: 17.3950, stopLon: 78.4380 },
+]
+
 // ═══════════════════════════════════════════════════════════════════════════
 // API helpers
 // ═══════════════════════════════════════════════════════════════════════════
@@ -57,13 +70,36 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 async function searchStopsByName(name: string, size = STOP_SEARCH_LIMIT, signal?: AbortSignal): Promise<Stop[]> {
-  const payload = await fetchJson<{ data?: { content?: Stop[] } }>(
-    `${API_URL}/stops/search?name=${encodeURIComponent(name)}&size=${size}`,
-    signal,
-  )
-  return (payload.data?.content ?? []).map(({ stopId, stopName, stopLat, stopLon }) => (
-    { stopId, stopName, stopLat, stopLon }
-  ))
+  try {
+    const url = name.trim()
+      ? `${API_URL}/stops/search?name=${encodeURIComponent(name)}&size=${size}`
+      : `${API_URL}/stops?size=${size}`
+    const payload = await fetchJson<any>(url, signal)
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.data)
+        ? payload.data
+        : (payload.data?.content ?? payload.content ?? [])
+    if (list.length > 0) {
+      return list.map((s: any) => ({
+        stopId: String(s.stopId ?? s.id ?? ''),
+        stopName: String(s.stopName ?? s.name ?? ''),
+        stopLat: s.stopLat ?? s.lat,
+        stopLon: s.stopLon ?? s.lon ?? s.lng,
+      })).filter((s: Stop) => s.stopId && s.stopName)
+    }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+  }
+
+  const q = sanitize(name)
+  if (!q) return POPULAR_HYDERABAD_STOPS
+  const tokens = tokenize(name)
+  const matched = POPULAR_HYDERABAD_STOPS.filter(s => {
+    const sName = sanitize(s.stopName)
+    return sName.includes(q) || tokens.some(t => sName.includes(t))
+  })
+  return matched.length > 0 ? matched : POPULAR_HYDERABAD_STOPS
 }
 
 async function fetchJourneys(fromStopId: string, toStopId: string): Promise<any[]> {
@@ -867,6 +903,24 @@ function AppInner() {
             </AdvancedMarker>
           </>
         )}
+
+        {!selectedJourney && POPULAR_HYDERABAD_STOPS.map(stop => (
+          stop.stopLat && stop.stopLon ? (
+            <AdvancedMarker
+              key={stop.stopId}
+              position={{ lat: stop.stopLat, lng: stop.stopLon }}
+              onClick={() => {
+                setToStop(stop)
+                setToText(stop.stopName)
+                setShowSearch(true)
+              }}
+            >
+              <div className="map-stop-pin" title={stop.stopName}>
+                <img src={busStopIcon} alt={stop.stopName} className="map-stop-pin-icon" />
+              </div>
+            </AdvancedMarker>
+          ) : null
+        ))}
       </Map>
 
       {/* ── Pick-on-map mode ── */}
@@ -1082,6 +1136,24 @@ function AppInner() {
                     </div>
                   </div>
                 )}
+
+                <div className="recents-section">
+                  <div className="search-section-header">Popular Bus Stops</div>
+                  <div className="recents-list">
+                    {POPULAR_HYDERABAD_STOPS.slice(0, 6).map(s => (
+                      <button key={s.stopId} className="recent-item" onClick={() => chooseResult({ type: 'stop', stop: s })}>
+                        <span className="recent-icon">
+                          <img src={busStopIcon} alt="" className="recent-type-icon" />
+                        </span>
+                        <span className="recent-info">
+                          <span className="recent-name">{s.stopName}</span>
+                          <span className="recent-sub">Bus Station</span>
+                        </span>
+                        <ChevronRightIcon />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </>
             )}
           </div>
