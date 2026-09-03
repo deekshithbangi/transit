@@ -490,15 +490,17 @@ body,
 .recent-icon {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
 }
 
 .recent-icon .icon-svg {
-  width: 20px;
-  height: 20px;
-  color: rgba(255, 255, 255, 0.5);
+  width: 24px;
+  height: 24px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .recent-info {
@@ -567,39 +569,37 @@ body,
 .sugg-icon {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: #3a3a3c;
+  background: rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
 }
 
 .sugg-icon .icon-svg {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   color: #4ade80;
 }
 
-/* Custom PNG icons for result types */
+/* Custom PNG icons for result types (Bus, Bus Stop, Pin, Walk) */
 .sugg-type-icon {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
-  filter: brightness(0) invert(1) opacity(0.85);
 }
 
 .qa-type-icon {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
-  filter: brightness(0) invert(1) opacity(0.85);
 }
 
 .recent-type-icon {
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
-  filter: brightness(0) invert(1) opacity(0.5);
+  opacity: 0.95;
 }
 
 /* TGSRTC badge on stop results */
